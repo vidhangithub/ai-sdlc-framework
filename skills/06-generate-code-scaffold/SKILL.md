@@ -1,20 +1,26 @@
 ---
 name: generate-code-scaffold
-version: 1.0.0
+version: 1.1.0
 phase: "04 — Code Development"
 description: >
   Generates a complete, company-standards-compliant Spring Boot 3.x service
-  scaffold from an approved LLD. Use this skill whenever a user wants to
-  generate Java code, create a Spring Boot service, scaffold a REST API,
-  create boilerplate code, or bootstrap a new microservice. Trigger when the
-  user says "generate code", "create the service", "scaffold this", "write
+  scaffold driven by a locked OpenAPI specification and approved LLD. The
+  OpenAPI spec is the primary contract — all controllers, DTOs, and response
+  schemas are generated to match it exactly. Use this skill whenever a user
+  wants to generate Java code, create a Spring Boot service, scaffold a REST
+  API, create boilerplate code, or bootstrap a new microservice. Trigger when
+  the user says "generate code", "create the service", "scaffold this", "write
   the Spring Boot code", "implement this endpoint", "create the Java classes",
-  "bootstrap the service", or "generate the boilerplate". Always generate from
-  the LLD — never from raw requirements. Output is a starting point for
+  "bootstrap the service", or "generate the boilerplate". ALWAYS require a
+  locked OpenAPI spec (from skill 04) before generating — never generate from
+  raw requirements or an unlocked spec. Output is a starting point for
   engineers, not production-ready code — human review is mandatory.
 inputs:
+  - name: openapi_spec
+    description: Locked and approved OpenAPI 3.0.3 YAML specification (output of skill 04) — primary input driving controllers and DTOs
+    required: true
   - name: lld
-    description: Approved Low-Level Design document
+    description: Approved Low-Level Design document — drives service layer, repository, and database layer
     required: true
   - name: service_name
     description: "Service name in kebab-case, e.g. payment-service"
@@ -29,7 +35,7 @@ inputs:
     description: "Comma-separated: rest_api, jpa, ibm_mq, redis, security, flyway (default: all)"
     required: false
     default: "rest_api,jpa,ibm_mq,security,flyway"
-output: Complete Java source files for a Spring Boot 3.x service
+output: Complete Java source files for a Spring Boot 3.x service — controllers and DTOs match OpenAPI spec exactly
 ---
 
 # Skill: Generate Spring Boot Code Scaffold

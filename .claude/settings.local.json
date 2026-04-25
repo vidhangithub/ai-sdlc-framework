@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//mnt/c/Codebases/ai-sdlc-framework/**)",
+      "Bash(mv 07-generate-openapi 04-generate-openapi-tmp)",
+      "Bash(mv 06-generate-unit-tests 07-generate-unit-tests)",
+      "Bash(mv 05-generate-code-scaffold 06-generate-code-scaffold)",
+      "Bash(mv 04-generate-stories 05-generate-stories)"
+    ]
+  }
+}

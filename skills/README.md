@@ -21,10 +21,10 @@
 | 01 | [parse-requirements](./01-parse-requirements/SKILL.md) | 01 | Extract structured LRS from any requirement source |
 | 02 | [generate-hld](./02-generate-hld/SKILL.md) | 02 | Generate High-Level Design from a locked LRS |
 | 03 | [generate-lld](./03-generate-lld/SKILL.md) | 02 | Generate Low-Level Design from an approved HLD |
-| 04 | [generate-stories](./04-generate-stories/SKILL.md) | 03 | Decompose LLD into Jira-ready user stories |
-| 05 | [generate-code-scaffold](./05-generate-code-scaffold/SKILL.md) | 04 | Generate Spring Boot service scaffold from LLD |
-| 06 | [generate-unit-tests](./06-generate-unit-tests/SKILL.md) | 05 | Generate comprehensive JUnit 5 unit tests |
-| 07 | [generate-openapi](./07-generate-openapi/SKILL.md) | 04 | Generate OpenAPI 3.0 spec from LLD API contracts |
+| 04 | [generate-openapi](./04-generate-openapi/SKILL.md) | 02 | Generate OpenAPI 3.0 spec from locked LLD — API contract gate before code |
+| 05 | [generate-stories](./05-generate-stories/SKILL.md) | 03 | Decompose LLD + OpenAPI spec into Jira-ready user stories |
+| 06 | [generate-code-scaffold](./06-generate-code-scaffold/SKILL.md) | 04 | Generate Spring Boot scaffold driven by locked OpenAPI spec + LLD |
+| 07 | [generate-unit-tests](./07-generate-unit-tests/SKILL.md) | 05 | Generate comprehensive JUnit 5 unit tests |
 | 08 | [review-code-security](./08-review-code-security/SKILL.md) | 04 | OWASP-aligned security review of Java code |
 | 09 | [generate-perf-tests](./09-generate-perf-tests/SKILL.md) | 05 | Generate Gatling performance simulations from NFRs |
 | 10 | [generate-release-notes](./10-generate-release-notes/SKILL.md) | 07 | Generate structured release notes from Git/Jira |
@@ -33,6 +33,9 @@
 
 ## Skill Chaining (Recommended Flow)
 
+Top-down approach: the OpenAPI specification is the contract gate between design and code.
+No code is generated until the OpenAPI spec is locked and approved.
+
 ```
 Input: Jira Epic / Confluence / PRD
          │
@@ -40,17 +43,19 @@ Input: Jira Epic / Confluence / PRD
     [01] parse-requirements  →  Locked LRS (LRS-ID assigned)
          │
          ▼
-    [02] generate-hld        →  HLD document (Architect reviews)
+    [02] generate-hld        →  HLD document (Architect sign-off)
          │
          ▼
-    [03] generate-lld        →  LLD document + OpenAPI via [07]
+    [03] generate-lld        →  LLD document (Engineer sign-off)
          │
-         ├──► [04] generate-stories      →  Jira backlog
+         ▼
+    [04] generate-openapi    →  Locked OpenAPI 3.0 spec ◄── API CONTRACT GATE
          │
-         ├──► [05] generate-code-scaffold →  Spring Boot scaffold
+         ├──► [05] generate-stories      →  Jira backlog (references spec)
+         │
+         ├──► [06] generate-code-scaffold →  Spring Boot scaffold (driven by spec)
          │         │
-         │         ├──► [06] generate-unit-tests
-         │         ├──► [07] generate-openapi
+         │         ├──► [07] generate-unit-tests
          │         └──► [08] review-code-security
          │
          ├──► [09] generate-perf-tests   →  Gatling simulations

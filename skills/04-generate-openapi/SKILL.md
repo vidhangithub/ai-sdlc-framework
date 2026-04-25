@@ -1,20 +1,23 @@
 ---
 name: generate-openapi
-version: 1.0.0
-phase: "04 — Code Development"
+version: 1.1.0
+phase: "02 — Design Documents"
 description: >
-  Generates a complete, validated OpenAPI 3.0.3 YAML specification from an
-  approved LLD API contract section. Use this skill whenever a user wants to
+  Generates a complete, validated OpenAPI 3.0.3 YAML specification from a
+  locked LLD. This is the API CONTRACT GATE — it must be completed and approved
+  before any code generation begins. Use this skill whenever a user wants to
   create an API spec, write OpenAPI YAML, generate Swagger docs, document REST
   endpoints, create API contracts, or produce API documentation. Trigger when
   the user says "generate OpenAPI spec", "write the API contract", "create
   Swagger YAML", "document this API", "generate the OpenAPI", "create the API
   definition", or "I need an OpenAPI file". The spec produced by this skill
-  becomes the source of truth for API contract testing (Pact) and client SDK
-  generation — it must match the LLD exactly.
+  becomes the single source of truth for code generation (skill 06), API
+  contract testing (Pact), story acceptance criteria (skill 05), and client
+  SDK generation — it must match the LLD exactly. Never generate code before
+  this spec is locked.
 inputs:
-  - name: lld_api_section
-    description: The API Contracts section from the approved LLD
+  - name: lld
+    description: Full approved Low-Level Design document
     required: true
   - name: service_name
     description: "Service name in kebab-case, e.g. payment-service"
@@ -29,7 +32,7 @@ inputs:
   - name: token_url
     description: "OAuth2 token URL (required if auth_type is oauth2)"
     required: false
-output: Complete OpenAPI 3.0.3 YAML specification
+output: Complete OpenAPI 3.0.3 YAML specification — must be approved before code generation (skill 06)
 ---
 
 # Skill: Generate OpenAPI 3.0 Specification

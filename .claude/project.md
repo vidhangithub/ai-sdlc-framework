@@ -114,10 +114,10 @@ Each skill is a SKILL.md file in `skills/`. To use one:
 | Parse a Jira Epic into an LRS | `skills/01-parse-requirements/SKILL.md` | Raw epic text |
 | Create HLD from LRS | `skills/02-generate-hld/SKILL.md` | Locked LRS |
 | Create LLD from HLD | `skills/03-generate-lld/SKILL.md` | Approved HLD + LRS |
-| Generate Jira stories | `skills/04-generate-stories/SKILL.md` | LRS + LLD |
-| Generate Spring Boot scaffold | `skills/05-generate-code-scaffold/SKILL.md` | LLD + service name |
-| Generate unit tests | `skills/06-generate-unit-tests/SKILL.md` | Service class + ACs |
-| Generate OpenAPI spec | `skills/07-generate-openapi/SKILL.md` | LLD API section |
+| Generate OpenAPI spec | `skills/04-generate-openapi/SKILL.md` | Locked LLD + service name |
+| Generate Jira stories | `skills/05-generate-stories/SKILL.md` | LRS + LLD + OpenAPI spec |
+| Generate Spring Boot scaffold | `skills/06-generate-code-scaffold/SKILL.md` | Locked OpenAPI spec + LLD |
+| Generate unit tests | `skills/07-generate-unit-tests/SKILL.md` | Service class + ACs |
 | Security review code | `skills/08-review-code-security/SKILL.md` | Java source code |
 | Generate Gatling perf tests | `skills/09-generate-perf-tests/SKILL.md` | LRS NFRs + LLD APIs |
 | Generate release notes | `skills/10-generate-release-notes/SKILL.md` | Git log + Jira stories |
