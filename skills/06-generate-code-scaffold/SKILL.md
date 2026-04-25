@@ -1,26 +1,29 @@
 ---
 name: generate-code-scaffold
-version: 1.1.0
+version: 1.2.0
 phase: "04 — Code Development"
 description: >
-  Generates a complete, company-standards-compliant Spring Boot 3.x service
-  scaffold driven by a locked OpenAPI specification and approved LLD. The
-  OpenAPI spec is the primary contract — all controllers, DTOs, and response
-  schemas are generated to match it exactly. Use this skill whenever a user
-  wants to generate Java code, create a Spring Boot service, scaffold a REST
-  API, create boilerplate code, or bootstrap a new microservice. Trigger when
-  the user says "generate code", "create the service", "scaffold this", "write
-  the Spring Boot code", "implement this endpoint", "create the Java classes",
-  "bootstrap the service", or "generate the boilerplate". ALWAYS require a
-  locked OpenAPI spec (from skill 04) before generating — never generate from
-  raw requirements or an unlocked spec. Output is a starting point for
-  engineers, not production-ready code — human review is mandatory.
+  Writes a complete, company-standards-compliant Spring Boot 3.x project
+  directly to disk as real files using the Write tool. The OpenAPI spec is the
+  primary contract — all controllers, DTOs, and response schemas are generated
+  to match it exactly. Use this skill whenever a user wants to generate Java
+  code, create a Spring Boot service, scaffold a REST API, create boilerplate
+  code, or bootstrap a new microservice. Trigger when the user says "generate
+  code", "create the service", "scaffold this", "write the Spring Boot code",
+  "implement this endpoint", "create the Java classes", "bootstrap the service",
+  or "generate the boilerplate". ALWAYS require a locked OpenAPI spec (from
+  skill 04) before generating — never generate from raw requirements or an
+  unlocked spec. Output is written as real source files on disk — not printed
+  as code blocks. Human review is mandatory before committing.
 inputs:
   - name: openapi_spec
     description: Locked and approved OpenAPI 3.0.3 YAML specification (output of skill 04) — primary input driving controllers and DTOs
     required: true
   - name: lld
     description: Approved Low-Level Design document — drives service layer, repository, and database layer
+    required: true
+  - name: output_directory
+    description: "Absolute path to the root directory where the project will be written, e.g. C:/Codebases/payment-service"
     required: true
   - name: service_name
     description: "Service name in kebab-case, e.g. payment-service"
@@ -32,10 +35,10 @@ inputs:
     description: "Primary domain entity name in PascalCase, e.g. Payment"
     required: true
   - name: features
-    description: "Comma-separated: rest_api, jpa, ibm_mq, redis, security, flyway (default: all)"
+    description: "Comma-separated: rest_api, jpa, ibm_mq, redis, security, flyway, mongodb (default: rest_api,jpa,security,flyway)"
     required: false
-    default: "rest_api,jpa,ibm_mq,security,flyway"
-output: Complete Java source files for a Spring Boot 3.x service — controllers and DTOs match OpenAPI spec exactly
+    default: "rest_api,jpa,security,flyway"
+output: Complete Spring Boot 3.x project written as real files to output_directory — compilable with `mvn verify`
 ---
 
 # Skill: Generate Spring Boot Code Scaffold
@@ -472,47 +475,100 @@ class {EntityName}ServiceTest {
 }
 ```
 
-### Step 4 — Output Format
+### Step 4 — Derive All File Paths
 
-Output each file clearly separated with a header:
+Before writing any file, build the complete list of absolute paths using `output_directory`,
+`service_name`, and the package path derived from `package_base` (replace `.` with `/`).
 
+Maven project root: `{output_directory}/{service_name}/`
+
+Standard path derivations:
 ```
-// ════════════════════════════════════════════════════════
-// FILE: src/main/java/com/company/.../ClassName.java
-// ════════════════════════════════════════════════════════
-[full class content]
+src/main/java/{package_path}/                  ← Java sources
+src/test/java/{package_path}/                  ← Test sources
+src/main/resources/                            ← application.yml, logback-spring.xml
+src/main/docker/                               ← Dockerfile
 ```
 
-After all files, output a summary table:
+Example for `package_base = com.company.payments`:
+```
+package_path = com/company/payments
+src root     = {output_directory}/payment-service/src/main/java/com/company/payments/
+```
 
-| File | Status | Notes |
-|------|--------|-------|
-| {EntityName}.java | Generated | Add LLD fields at marked comment |
-| {EntityName}RequestDto.java | Generated | Validation annotations added |
+---
+
+### Step 5 — Write Every File to Disk
+
+Use the **Write tool** to create each file at its absolute path. Do NOT print code blocks
+in the chat response — write directly to disk.
+
+Write files in this order (dependencies first):
+
+1. `pom.xml` → `{output_directory}/{service_name}/pom.xml`
+2. `application.yml` → `src/main/resources/application.yml`
+3. `logback-spring.xml` → `src/main/resources/logback-spring.xml`
+4. `*Application.java` → `src/main/java/{package_path}/{EntityName}ServiceApplication.java`
+5. `AccountStatus.java` (or equivalent enum) → `src/main/java/{package_path}/util/`
+6. Entity / Document class → `src/main/java/{package_path}/domain/entity/` (JPA) or `domain/document/` (MongoDB)
+7. Response DTO(s) → `src/main/java/{package_path}/domain/dto/`
+8. Request DTO(s) → `src/main/java/{package_path}/domain/dto/` (if write operations exist)
+9. Mapper → `src/main/java/{package_path}/domain/mapper/`
+10. Repository → `src/main/java/{package_path}/repository/`
+11. Service interface → `src/main/java/{package_path}/service/`
+12. Service implementation → `src/main/java/{package_path}/service/impl/`
+13. Controller → `src/main/java/{package_path}/controller/`
+14. Exception classes → `src/main/java/{package_path}/exception/`
+15. GlobalExceptionHandler → `src/main/java/{package_path}/exception/`
+16. CorrelationIdFilter → `src/main/java/{package_path}/filter/`
+17. SecurityConfig → `src/main/java/{package_path}/config/`
+18. OpenApiConfig → `src/main/java/{package_path}/config/`
+19. Dockerfile → `src/main/docker/Dockerfile`
+20. Unit test stub → `src/test/java/{package_path}/service/{EntityName}ServiceTest.java`
+
+Write all files in parallel where there are no dependencies between them to maximise speed.
+
+---
+
+### Step 6 — Confirm and Summarise
+
+After all Write tool calls complete successfully, output a summary table in chat:
+
+| File | Written to | Status |
+|------|-----------|--------|
+| `pom.xml` | `{output_directory}/{service_name}/pom.xml` | Written |
+| `AccountController.java` | `...controller/AccountController.java` | Written |
 | ... | | |
 
-Then add a **"TODO for Engineer"** section listing everything the engineer must complete before PR:
-- Fill in entity fields from LLD
-- Complete business logic in ServiceImpl
-- Complete unit test scenarios for all AC scenarios
-- Add any custom repository queries
-- Verify MapStruct mappings are complete
+Then output a **"TODO for Engineer"** section:
+- Confirm MongoDB / database field names match actual schema
+- Fill in any `TODO` comments left in generated files
+- Run `mvn verify` — fix any compilation or Checkstyle errors
+- Complete unit test scenarios for all AC scenarios from the stories
+- Add secrets to Vault / AWS Secrets Manager before deploying
 
 ---
 
 ## Quality Checklist
 
+**File generation:**
+- [ ] Every file has been written to disk via the Write tool — no code blocks printed in chat
+- [ ] All file paths are absolute and correctly derived from `output_directory` + `package_base`
+- [ ] No file has been skipped — all 20 files (or equivalent) are present on disk
+
+**Code quality:**
 - [ ] All files use `jakarta.*` namespace (not `javax.*`)
 - [ ] All classes use Lombok — no manual getters/setters
-- [ ] Entity has: UUID PK, `@Version`, audit timestamps, `deletedAt`
-- [ ] Controller uses `@Valid` on all request bodies
+- [ ] Entity / Document class fields match the LLD schema exactly
+- [ ] Controller method signatures and DTO field names match the OpenAPI spec exactly
+- [ ] Controller uses `@Valid` on all request bodies (write operations) or `@Validated` for query params
 - [ ] Controller uses `@PreAuthorize` for all endpoints
-- [ ] Service implementation uses `@Transactional` on write methods
-- [ ] GlobalExceptionHandler covers: validation, not-found, generic
+- [ ] Service implementation uses `@Transactional` on write methods (read-only services: `@Transactional(readOnly = true)`)
+- [ ] GlobalExceptionHandler covers: validation, not-found, generic catch-all
 - [ ] All error responses use Spring 6 `ProblemDetail` (RFC 7807)
-- [ ] MDC traceId referenced in log statements
+- [ ] MDC traceId referenced in all log statements
 - [ ] Unit test stubs follow AAA pattern with meaningful display names
-- [ ] Flyway migration uses `gen_random_uuid()` not sequences
+- [ ] No hardcoded secrets in any generated file — all via environment variables
 
 ---
 
