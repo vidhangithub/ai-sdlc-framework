@@ -1,0 +1,261 @@
+# argo-rollout-canary.yaml — Progressive Canary Delivery
+# AI-SDLC Framework — Phase 07: Deployment
+# Requires: Argo Rollouts installed in EKS cluster
+# Install: kubectl create namespace argo-rollouts
+#          kubectl apply -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml
+
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: payment-service
+  namespace: payment-service-dev
+  labels:
+    app: payment-service
+    framework: ai-sdlc
+spec:
+  replicas: 6
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: payment-service
+
+  template:
+    metadata:
+      labels:
+        app: payment-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: payment-service
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: payment-service
+          image: 123456789.dkr.ecr.eu-west-1.amazonaws.com/payment-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "eks,dev"
+            - name: JAVA_OPTS
+              value: "-Xms256m -Xmx768m -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            failureThreshold: 3
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: logs
+              mountPath: /app/logs
+
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}
+
+  # ── CANARY STRATEGY ───────────────────────────────────────────
+  strategy:
+    canary:
+      # Canary service — receives canary traffic
+      canaryService: payment-service-canary
+      # Stable service — receives stable traffic
+      stableService: payment-service-stable
+
+      # Traffic routing via NGINX Ingress (or ALB)
+      trafficRouting:
+        nginx:
+          stableIngress: payment-service-stable
+          annotationPrefix: nginx.ingress.kubernetes.io
+          additionalIngressAnnotations:
+            canary-by-header: X-Canary
+            canary-by-header-value: "true"
+
+      # ── PROGRESSIVE TRAFFIC STEPS ─────────────────────────────
+      steps:
+        # Step 1: Route 5% to canary, pause for analysis
+        - setWeight: 5
+        - pause:
+            duration: 2m
+
+        # Step 2: Analyse metrics at 5%
+        - analysis:
+            templates:
+              - templateName: payment-service-success-rate
+              - templateName: payment-service-latency-p95
+
+        # Step 3: Increase to 25%
+        - setWeight: 25
+        - pause:
+            duration: 5m
+
+        # Step 4: Analyse metrics at 25%
+        - analysis:
+            templates:
+              - templateName: payment-service-success-rate
+              - templateName: payment-service-latency-p95
+
+        # Step 5: Increase to 50%
+        - setWeight: 50
+        - pause:
+            duration: 5m
+
+        # Step 6: Final analysis at 50%
+        - analysis:
+            templates:
+              - templateName: payment-service-success-rate
+              - templateName: payment-service-latency-p95
+              - templateName: payment-service-error-rate
+
+        # Step 7: Manual approval before full rollout
+        - pause: {}   # Waits for human approval: kubectl argo rollouts promote payment-service
+
+        # Step 8: Full rollout 100%
+        - setWeight: 100
+
+      # Auto-rollback on analysis failure
+      autoPromotionEnabled: false
+
+---
+
+# ── ANALYSIS TEMPLATE: Success Rate ──────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: payment-service-success-rate
+  namespace: payment-service-dev
+spec:
+  metrics:
+    - name: success-rate
+      interval: 1m
+      # Must maintain >99% success rate (non-5xx responses)
+      successCondition: result[0] >= 0.99
+      failureLimit: 2
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc.cluster.local:9090
+          query: |
+            sum(rate(
+              http_server_requests_seconds_count{
+                app="payment-service",
+                status!~"5..",
+                version="{{args.canary-version}}"
+              }[2m]
+            ))
+            /
+            sum(rate(
+              http_server_requests_seconds_count{
+                app="payment-service",
+                version="{{args.canary-version}}"
+              }[2m]
+            ))
+  args:
+    - name: canary-version
+
+---
+
+# ── ANALYSIS TEMPLATE: P95 Latency ───────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: payment-service-latency-p95
+  namespace: payment-service-dev
+spec:
+  metrics:
+    - name: p95-latency
+      interval: 1m
+      # P95 latency must stay below 500ms
+      successCondition: result[0] <= 0.5
+      failureLimit: 2
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc.cluster.local:9090
+          query: |
+            histogram_quantile(0.95,
+              sum(rate(
+                http_server_requests_seconds_bucket{
+                  app="payment-service",
+                  uri="/api/v1/payments",
+                  version="{{args.canary-version}}"
+                }[2m]
+              )) by (le)
+            )
+  args:
+    - name: canary-version
+
+---
+
+# ── ANALYSIS TEMPLATE: Error Rate ────────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: payment-service-error-rate
+  namespace: payment-service-dev
+spec:
+  metrics:
+    - name: error-rate
+      interval: 1m
+      # Error rate must stay below 1%
+      successCondition: result[0] <= 0.01
+      failureLimit: 2
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc.cluster.local:9090
+          query: |
+            sum(rate(
+              http_server_requests_seconds_count{
+                app="payment-service",
+                status=~"5..",
+                version="{{args.canary-version}}"
+              }[2m]
+            ))
+            /
+            sum(rate(
+              http_server_requests_seconds_count{
+                app="payment-service",
+                version="{{args.canary-version}}"
+              }[2m]
+            ))
+  args:
+    - name: canary-version

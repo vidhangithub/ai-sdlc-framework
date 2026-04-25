@@ -1,0 +1,50 @@
+# AI-SDLC Framework — .gitignore
+
+# Maven
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Sensitive files — NEVER commit these
+.env
+*.env
+*.pem
+*.key
+*.p12
+*.jks
+secrets.yaml
+*-secrets.yaml
+vault-token
+
+# Test output
+*.exec
+surefire-reports/
+failsafe-reports/
+gatling/
+
+# Build artifacts
+*.log
+logs/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Docker
+.dockerignore
+
+# Local overrides
+local-values.yaml
+values-local.yaml

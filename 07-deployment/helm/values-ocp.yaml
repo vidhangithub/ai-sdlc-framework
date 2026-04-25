@@ -1,0 +1,198 @@
+# values-ocp.yaml — OpenShift Container Platform (On-Prem) Deployment Configuration
+# AI-SDLC Framework — Phase 07: Deployment
+
+# ── IMAGE ─────────────────────────────────────────────────────
+image:
+  repository: registry.company.internal/payment-service
+  tag: "latest"          # Overridden by pipeline: --set image.tag=${BUILD_NUMBER}
+  pullPolicy: Always
+  pullSecrets:
+    - name: internal-registry-secret
+
+# ── REPLICAS & SCALING ────────────────────────────────────────
+replicaCount: 3
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# ── RESOURCES ─────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: "250m"
+    memory: "512Mi"
+  limits:
+    cpu: "1000m"
+    memory: "1Gi"
+
+# ── OPENSHIFT-SPECIFIC: ROUTE (replaces Ingress) ─────────────
+ocpRoute:
+  enabled: true
+  host: payment-service.apps.ocp.company.internal
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+    certificate: ""    # Inject cert via Vault or cert-manager
+    key: ""
+  annotations:
+    haproxy.router.openshift.io/timeout: "30s"
+    haproxy.router.openshift.io/rate-limit-connections: "true"
+    haproxy.router.openshift.io/rate-limit-connections.rate-http: "100"
+
+# Disable standard Kubernetes Ingress (use OCP Route above)
+ingress:
+  enabled: false
+
+# ── HEALTH PROBES ─────────────────────────────────────────────
+livenessProbe:
+  httpGet:
+    path: /actuator/health/liveness
+    port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  failureThreshold: 3
+  timeoutSeconds: 5
+
+readinessProbe:
+  httpGet:
+    path: /actuator/health/readiness
+    port: 8080
+  initialDelaySeconds: 20
+  periodSeconds: 5
+  failureThreshold: 3
+  timeoutSeconds: 3
+
+startupProbe:
+  httpGet:
+    path: /actuator/health/liveness
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  failureThreshold: 30
+
+# ── DISRUPTION BUDGET ─────────────────────────────────────────
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+# ── SERVICE ACCOUNT ───────────────────────────────────────────
+serviceAccount:
+  create: true
+  name: payment-service
+  annotations: {}   # No IRSA on OCP — use Vault agent sidecar instead
+
+# ── OPENSHIFT SECURITY CONTEXT CONSTRAINTS (SCC) ─────────────
+# OCP requires explicit SCC assignment. Use 'restricted-v2' (default in OCP 4.11+)
+# For non-root user: add serviceaccount to 'restricted-v2' SCC
+# oc adm policy add-scc-to-user restricted-v2 -z payment-service -n payment-service-dev
+
+podSecurityContext:
+  runAsNonRoot: true
+  # OCP assigns UID from namespace range — do not set runAsUser
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+  # OCP: runAsUser will be assigned by the namespace UID range
+
+# ── ENVIRONMENT VARIABLES ─────────────────────────────────────
+env:
+  - name: SPRING_PROFILES_ACTIVE
+    value: "ocp,dev"
+  - name: JAVA_OPTS
+    value: "-Xms256m -Xmx768m -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+  - name: SERVER_PORT
+    value: "8080"
+
+# ── VAULT AGENT SIDECAR (secrets injection on OCP) ───────────
+vaultAgent:
+  enabled: true
+  annotations:
+    vault.hashicorp.com/agent-inject: "true"
+    vault.hashicorp.com/role: "payment-service"
+    vault.hashicorp.com/agent-inject-secret-db-password: "company/dev/payment-service"
+    vault.hashicorp.com/agent-inject-template-db-password: |
+      {{- with secret "company/dev/payment-service" -}}
+      {{ .Data.data.db_password }}
+      {{- end -}}
+    vault.hashicorp.com/agent-inject-secret-mq-password: "company/dev/payment-service"
+    vault.hashicorp.com/agent-inject-template-mq-password: |
+      {{- with secret "company/dev/payment-service" -}}
+      {{ .Data.data.mq_password }}
+      {{- end -}}
+
+# ── CONFIG MAP ────────────────────────────────────────────────
+configMap:
+  data:
+    application.yml: |
+      spring:
+        datasource:
+          url: jdbc:postgresql://payment-db.dev.company.internal:5432/payments
+          username: payment_app
+        jpa:
+          hibernate:
+            ddl-auto: validate
+          show-sql: false
+        flyway:
+          enabled: true
+          locations: classpath:db/migration
+      management:
+        endpoints:
+          web:
+            exposure:
+              include: health,prometheus,info
+        metrics:
+          export:
+            prometheus:
+              enabled: true
+
+# ── NETWORK POLICY (OCP-compatible) ──────────────────────────
+networkPolicy:
+  enabled: true
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              network.openshift.io/policy-group: ingress
+      ports:
+        - port: 8080
+  egress:
+    - to: []   # Allow all egress (restrict further as required)
+
+# ── OBSERVABILITY ─────────────────────────────────────────────
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8080"
+  prometheus.io/path: "/actuator/prometheus"
+
+# ── VOLUMES ───────────────────────────────────────────────────
+volumes:
+  - name: tmp
+    emptyDir: {}
+  - name: logs
+    emptyDir: {}
+  - name: vault-secrets
+    emptyDir:
+      medium: Memory
+
+volumeMounts:
+  - name: tmp
+    mountPath: /tmp
+  - name: logs
+    mountPath: /app/logs
+  - name: vault-secrets
+    mountPath: /vault/secrets
+
+# ── OPENSHIFT IMAGESTREAM (optional — for internal registry) ──
+imageStream:
+  enabled: false   # Set to true if using OCP internal ImageStreams
+  name: payment-service
+  namespace: payment-service-dev

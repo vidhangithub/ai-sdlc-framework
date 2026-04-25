@@ -1,0 +1,452 @@
+// ============================================================
+// Jenkinsfile — AI-SDLC Framework
+// Complete declarative pipeline with quality gates
+// ============================================================
+// Requirements:
+//   - Jenkins 2.400+
+//   - Plugins: Pipeline, SonarQube Scanner, Docker Pipeline,
+//              Kubernetes, JUnit, Jacoco, Cobertura, Slack
+//   - Credentials: sonar-token, docker-registry, vault-token
+// ============================================================
+
+pipeline {
+
+    agent {
+        kubernetes {
+            label "sdlc-build-${BUILD_NUMBER}"
+            yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins-agent
+  containers:
+    - name: maven
+      image: maven:3.9-eclipse-temurin-17
+      command: ['sleep', 'infinity']
+      resources:
+        requests: { cpu: '1', memory: '2Gi' }
+        limits:   { cpu: '2', memory: '4Gi' }
+      volumeMounts:
+        - name: maven-cache
+          mountPath: /root/.m2
+    - name: docker
+      image: docker:24-dind
+      securityContext:
+        privileged: true
+      volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+    - name: trivy
+      image: aquasec/trivy:latest
+      command: ['sleep', 'infinity']
+    - name: zap
+      image: owasp/zap2docker-stable:latest
+      command: ['sleep', 'infinity']
+  volumes:
+    - name: maven-cache
+      persistentVolumeClaim:
+        claimName: maven-cache-pvc
+    - name: docker-sock
+      hostPath:
+        path: /var/run/docker.sock
+"""
+        }
+    }
+
+    // ── ENVIRONMENT ──────────────────────────────────────────
+    environment {
+        SERVICE_NAME        = 'payment-service'
+        DOCKER_REGISTRY     = 'registry.company.com'
+        IMAGE_NAME          = "${DOCKER_REGISTRY}/${SERVICE_NAME}"
+        IMAGE_TAG           = "${BUILD_NUMBER}"
+        SONAR_PROJECT_KEY   = "${SERVICE_NAME}"
+        HELM_RELEASE        = "${SERVICE_NAME}"
+        COVERAGE_THRESHOLD  = '85'
+        VAULT_ADDR          = 'https://vault.company.internal'
+        SLACK_CHANNEL       = '#platform-builds'
+    }
+
+    // ── OPTIONS ──────────────────────────────────────────────
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+        timeout(time: 60, unit: 'MINUTES')
+        disableConcurrentBuilds()
+        timestamps()
+    }
+
+    // ── PARAMETERS ───────────────────────────────────────────
+    parameters {
+        choice(name: 'DEPLOY_ENV', choices: ['dev', 'sit', 'none'], description: 'Deploy to environment after build')
+        booleanParam(name: 'SKIP_PERF_TESTS', defaultValue: true, description: 'Skip Gatling performance tests (run on release branches only)')
+        booleanParam(name: 'SKIP_DAST', defaultValue: true, description: 'Skip OWASP ZAP scan')
+    }
+
+    // ── STAGES ───────────────────────────────────────────────
+    stages {
+
+        // ── 1. CHECKOUT ──────────────────────────────────────
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    env.GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    env.GIT_BRANCH_NAME  = env.BRANCH_NAME ?: sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+                    currentBuild.displayName = "#${BUILD_NUMBER} — ${env.GIT_BRANCH_NAME} (${env.GIT_COMMIT_SHORT})"
+                    echo "Building: ${SERVICE_NAME} | Branch: ${env.GIT_BRANCH_NAME} | Commit: ${env.GIT_COMMIT_SHORT}"
+                }
+            }
+        }
+
+        // ── 2. BUILD ─────────────────────────────────────────
+        stage('Build') {
+            steps {
+                container('maven') {
+                    sh 'mvn clean package -DskipTests --no-transfer-progress'
+                }
+            }
+            post {
+                success { archiveArtifacts artifacts: 'target/*.jar', fingerprint: true }
+            }
+        }
+
+        // ── 3. UNIT TESTS + COVERAGE ─────────────────────────
+        stage('Unit Tests') {
+            steps {
+                container('maven') {
+                    sh 'mvn test --no-transfer-progress'
+                }
+            }
+            post {
+                always {
+                    junit '**/target/surefire-reports/*.xml'
+                    jacoco(
+                        execPattern: '**/target/jacoco.exec',
+                        classPattern: '**/target/classes',
+                        sourcePattern: '**/src/main/java',
+                        minimumInstructionCoverage: "${COVERAGE_THRESHOLD}",
+                        changeBuildStatus: true
+                    )
+                }
+                failure {
+                    script {
+                        currentBuild.result = 'FAILURE'
+                        error("Unit tests failed — aborting pipeline")
+                    }
+                }
+            }
+        }
+
+        // ── 4. STATIC ANALYSIS (SAST) ─────────────────────────
+        stage('SAST — SonarQube') {
+            steps {
+                container('maven') {
+                    withSonarQubeEnv('sonar-server') {
+                        sh """
+                            mvn sonar:sonar \\
+                                -Dsonar.projectKey=${SONAR_PROJECT_KEY} \\
+                                -Dsonar.projectName=${SERVICE_NAME} \\
+                                -Dsonar.branch.name=${env.GIT_BRANCH_NAME} \\
+                                --no-transfer-progress
+                        """
+                    }
+                }
+            }
+            post {
+                always {
+                    timeout(time: 5, unit: 'MINUTES') {
+                        waitForQualityGate abortPipeline: true
+                    }
+                }
+            }
+        }
+
+        // ── 5. DEPENDENCY CVE SCAN ────────────────────────────
+        stage('Dependency CVE Scan') {
+            steps {
+                container('maven') {
+                    sh """
+                        mvn org.owasp:dependency-check-maven:check \\
+                            -DfailBuildOnCVSS=7 \\
+                            -DsuppressionFile=dependency-check-suppressions.xml \\
+                            --no-transfer-progress
+                    """
+                }
+            }
+            post {
+                always {
+                    publishHTML([
+                        allowMissing: false,
+                        reportDir: 'target',
+                        reportFiles: 'dependency-check-report.html',
+                        reportName: 'OWASP Dependency Check Report'
+                    ])
+                }
+                failure {
+                    error("HIGH/CRITICAL CVE found in dependencies — aborting pipeline")
+                }
+            }
+        }
+
+        // ── 6. SECRET SCAN ────────────────────────────────────
+        stage('Secret Scan — Gitleaks') {
+            steps {
+                sh """
+                    docker run --rm -v \$(pwd):/path zricethezav/gitleaks:latest \\
+                        detect --source=/path \\
+                        --report-format=json \\
+                        --report-path=/path/gitleaks-report.json \\
+                        --exit-code=1
+                """
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'gitleaks-report.json', allowEmptyArchive: true
+                }
+                failure {
+                    error("Secrets detected in codebase — aborting pipeline")
+                }
+            }
+        }
+
+        // ── 7. DOCKER BUILD ───────────────────────────────────
+        stage('Docker Build') {
+            steps {
+                container('docker') {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'docker-registry-creds',
+                        usernameVariable: 'REGISTRY_USER',
+                        passwordVariable: 'REGISTRY_PASS'
+                    )]) {
+                        sh """
+                            docker login ${DOCKER_REGISTRY} -u \${REGISTRY_USER} -p \${REGISTRY_PASS}
+                            docker build \\
+                                --label git.commit=${env.GIT_COMMIT_SHORT} \\
+                                --label build.number=${BUILD_NUMBER} \\
+                                --label service.name=${SERVICE_NAME} \\
+                                -t ${IMAGE_NAME}:${IMAGE_TAG} \\
+                                -t ${IMAGE_NAME}:latest \\
+                                .
+                        """
+                    }
+                }
+            }
+        }
+
+        // ── 8. CONTAINER IMAGE SCAN (TRIVY) ──────────────────
+        stage('Container Scan — Trivy') {
+            steps {
+                container('trivy') {
+                    sh """
+                        trivy image \\
+                            --exit-code 1 \\
+                            --severity HIGH,CRITICAL \\
+                            --no-progress \\
+                            --format table \\
+                            --output trivy-report.txt \\
+                            ${IMAGE_NAME}:${IMAGE_TAG}
+                    """
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-report.txt', allowEmptyArchive: true
+                }
+                failure {
+                    error("HIGH/CRITICAL CVE found in container image — aborting pipeline")
+                }
+            }
+        }
+
+        // ── 9. INTEGRATION TESTS ──────────────────────────────
+        stage('Integration Tests') {
+            steps {
+                container('maven') {
+                    sh """
+                        mvn verify \\
+                            -P integration-tests \\
+                            -DskipUnitTests=true \\
+                            --no-transfer-progress
+                    """
+                }
+            }
+            post {
+                always {
+                    junit '**/target/failsafe-reports/*.xml'
+                }
+                failure {
+                    error("Integration tests failed — aborting pipeline")
+                }
+            }
+        }
+
+        // ── 10. PUBLISH IMAGE ─────────────────────────────────
+        stage('Publish Image') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'release/*'
+                }
+            }
+            steps {
+                container('docker') {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'docker-registry-creds',
+                        usernameVariable: 'REGISTRY_USER',
+                        passwordVariable: 'REGISTRY_PASS'
+                    )]) {
+                        sh """
+                            docker push ${IMAGE_NAME}:${IMAGE_TAG}
+                            docker push ${IMAGE_NAME}:latest
+                        """
+                    }
+                }
+            }
+        }
+
+        // ── 11. DEPLOY TO DEV / SIT ───────────────────────────
+        stage('Deploy') {
+            when {
+                expression { params.DEPLOY_ENV != 'none' }
+                anyOf { branch 'main'; branch 'release/*' }
+            }
+            steps {
+                script {
+                    def env = params.DEPLOY_ENV
+                    echo "Deploying ${SERVICE_NAME}:${IMAGE_TAG} to ${env}"
+                    sh """
+                        helm upgrade --install ${HELM_RELEASE} ./helm \\
+                            --namespace ${SERVICE_NAME}-${env} \\
+                            --values ./helm/values-${env}.yaml \\
+                            --set image.tag=${IMAGE_TAG} \\
+                            --set image.repository=${IMAGE_NAME} \\
+                            --wait \\
+                            --timeout 5m
+                    """
+                }
+            }
+        }
+
+        // ── 12. SMOKE TESTS ───────────────────────────────────
+        stage('Smoke Tests') {
+            when {
+                expression { params.DEPLOY_ENV != 'none' }
+            }
+            steps {
+                container('maven') {
+                    sh """
+                        mvn test \\
+                            -P smoke-tests \\
+                            -Dsmoke.base-url=https://${SERVICE_NAME}.${params.DEPLOY_ENV}.company.internal \\
+                            --no-transfer-progress
+                    """
+                }
+            }
+        }
+
+        // ── 13. PERFORMANCE TESTS (release branches only) ─────
+        stage('Performance Tests') {
+            when {
+                allOf {
+                    branch 'release/*'
+                    expression { !params.SKIP_PERF_TESTS }
+                }
+            }
+            steps {
+                container('maven') {
+                    sh """
+                        mvn gatling:test \\
+                            -Dgatling.simulationClass=com.company.perf.PaymentSimulation \\
+                            -Denv=${params.DEPLOY_ENV} \\
+                            --no-transfer-progress
+                    """
+                }
+            }
+            post {
+                always {
+                    publishHTML([
+                        allowMissing: false,
+                        reportDir: 'target/gatling',
+                        reportFiles: '**/index.html',
+                        reportName: 'Gatling Performance Report'
+                    ])
+                }
+            }
+        }
+
+        // ── 14. DAST — OWASP ZAP ─────────────────────────────
+        stage('DAST — OWASP ZAP') {
+            when {
+                expression { !params.SKIP_DAST && params.DEPLOY_ENV != 'none' }
+            }
+            steps {
+                container('zap') {
+                    sh """
+                        zap-api-scan.py \\
+                            -t https://${SERVICE_NAME}.${params.DEPLOY_ENV}.company.internal/v3/api-docs \\
+                            -f openapi \\
+                            -r zap-report.html \\
+                            -x zap-report.xml \\
+                            -l WARN
+                    """
+                }
+            }
+            post {
+                always {
+                    publishHTML([
+                        allowMissing: true,
+                        reportDir: '.',
+                        reportFiles: 'zap-report.html',
+                        reportName: 'OWASP ZAP DAST Report'
+                    ])
+                }
+            }
+        }
+
+        // ── 15. UAT PROMOTION (manual gate) ──────────────────
+        stage('Promote to UAT?') {
+            when { branch 'release/*' }
+            steps {
+                timeout(time: 24, unit: 'HOURS') {
+                    input(
+                        message: "Promote ${SERVICE_NAME}:${IMAGE_TAG} to UAT?",
+                        ok: 'Approve',
+                        submitter: 'product-owners,release-managers',
+                        parameters: [
+                            text(name: 'RELEASE_NOTES', description: 'Release notes for UAT team')
+                        ]
+                    )
+                }
+            }
+        }
+
+    } // end stages
+
+    // ── POST ─────────────────────────────────────────────────
+    post {
+        always {
+            cleanWs()
+        }
+        success {
+            slackSend(
+                channel: env.SLACK_CHANNEL,
+                color: 'good',
+                message: "✅ *${SERVICE_NAME}* build #${BUILD_NUMBER} succeeded | Branch: ${env.GIT_BRANCH_NAME} | <${BUILD_URL}|View Build>"
+            )
+        }
+        failure {
+            slackSend(
+                channel: env.SLACK_CHANNEL,
+                color: 'danger',
+                message: "🔴 *${SERVICE_NAME}* build #${BUILD_NUMBER} FAILED | Branch: ${env.GIT_BRANCH_NAME} | <${BUILD_URL}|View Build>"
+            )
+        }
+        unstable {
+            slackSend(
+                channel: env.SLACK_CHANNEL,
+                color: 'warning',
+                message: "⚠️ *${SERVICE_NAME}* build #${BUILD_NUMBER} is unstable | <${BUILD_URL}|View Build>"
+            )
+        }
+    }
+
+} // end pipeline

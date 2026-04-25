@@ -1,0 +1,229 @@
+# values-eks.yaml — Amazon EKS Deployment Configuration
+# AI-SDLC Framework — Phase 07: Deployment
+
+# ── IMAGE ─────────────────────────────────────────────────────
+image:
+  repository: 123456789.dkr.ecr.eu-west-1.amazonaws.com/payment-service
+  tag: "latest"          # Overridden by pipeline: --set image.tag=${BUILD_NUMBER}
+  pullPolicy: Always
+
+# ── REPLICAS & SCALING ────────────────────────────────────────
+replicaCount: 3
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+
+# ── RESOURCES ─────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: "250m"
+    memory: "512Mi"
+  limits:
+    cpu: "1000m"
+    memory: "1Gi"
+
+# ── SERVICE ───────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+
+# ── INGRESS ───────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: payment-service.dev.company.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: payment-service-tls
+      hosts:
+        - payment-service.dev.company.com
+
+# ── HEALTH PROBES ─────────────────────────────────────────────
+livenessProbe:
+  httpGet:
+    path: /actuator/health/liveness
+    port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  failureThreshold: 3
+  timeoutSeconds: 5
+
+readinessProbe:
+  httpGet:
+    path: /actuator/health/readiness
+    port: 8080
+  initialDelaySeconds: 20
+  periodSeconds: 5
+  failureThreshold: 3
+  timeoutSeconds: 3
+
+startupProbe:
+  httpGet:
+    path: /actuator/health/liveness
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  failureThreshold: 30
+  timeoutSeconds: 3
+
+# ── DISRUPTION BUDGET ─────────────────────────────────────────
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+# ── SERVICE ACCOUNT (IRSA) ────────────────────────────────────
+serviceAccount:
+  create: true
+  name: payment-service
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/payment-service-role
+    eks.amazonaws.com/token-expiration: "86400"
+
+# ── SECURITY CONTEXT ──────────────────────────────────────────
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# ── ENVIRONMENT VARIABLES ─────────────────────────────────────
+env:
+  - name: SPRING_PROFILES_ACTIVE
+    value: "eks,dev"
+  - name: JAVA_OPTS
+    value: "-Xms256m -Xmx768m -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+  - name: SERVER_PORT
+    value: "8080"
+
+# ── SECRETS (injected from AWS Secrets Manager via External Secrets Operator) ──
+externalSecrets:
+  enabled: true
+  secretStoreRef:
+    name: aws-secrets-manager
+    kind: ClusterSecretStore
+  secrets:
+    - name: payment-service-secrets
+      remoteRef:
+        key: company/dev/payment-service
+      data:
+        - secretKey: SPRING_DATASOURCE_PASSWORD
+          remoteRef:
+            property: db_password
+        - secretKey: IBM_MQ_PASSWORD
+          remoteRef:
+            property: mq_password
+        - secretKey: EXTERNAL_API_KEY
+          remoteRef:
+            property: external_api_key
+
+# ── CONFIG MAP ────────────────────────────────────────────────
+configMap:
+  data:
+    application.yml: |
+      spring:
+        datasource:
+          url: jdbc:postgresql://payment-db.dev.internal:5432/payments
+          username: payment_app
+        jpa:
+          hibernate:
+            ddl-auto: validate
+          show-sql: false
+        flyway:
+          enabled: true
+          locations: classpath:db/migration
+      management:
+        endpoints:
+          web:
+            exposure:
+              include: health,prometheus,info
+        metrics:
+          export:
+            prometheus:
+              enabled: true
+
+# ── NETWORK POLICY ────────────────────────────────────────────
+networkPolicy:
+  enabled: true
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+        - podSelector:
+            matchLabels:
+              app: api-gateway
+      ports:
+        - port: 8080
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: data
+      ports:
+        - port: 5432    # PostgreSQL
+        - port: 1414    # IBM MQ
+
+# ── TOPOLOGY SPREAD (multi-AZ) ────────────────────────────────
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app: payment-service
+
+# ── OBSERVABILITY ─────────────────────────────────────────────
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8080"
+  prometheus.io/path: "/actuator/prometheus"
+
+# ── VOLUMES (writable temp dirs for read-only filesystem) ─────
+volumes:
+  - name: tmp
+    emptyDir: {}
+  - name: logs
+    emptyDir: {}
+
+volumeMounts:
+  - name: tmp
+    mountPath: /tmp
+  - name: logs
+    mountPath: /app/logs

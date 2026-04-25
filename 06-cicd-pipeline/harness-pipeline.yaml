@@ -1,0 +1,361 @@
+pipeline:
+  name: AI-SDLC — Payment Service Pipeline
+  identifier: payment_service_pipeline
+  projectIdentifier: platform_engineering
+  orgIdentifier: company
+  description: >
+    End-to-end CI/CD pipeline for payment-service.
+    Covers build, test, scan, publish, deploy (EKS/OCP), and progressive delivery.
+
+  properties:
+    ci:
+      codebase:
+        connectorRef: github_connector
+        repoName: payment-service
+        build:
+          type: branch
+          spec:
+            branch: <+input>
+
+  variables:
+    - name: SERVICE_NAME
+      type: String
+      value: payment-service
+    - name: DOCKER_REGISTRY
+      type: String
+      value: registry.company.com
+    - name: COVERAGE_THRESHOLD
+      type: String
+      value: "85"
+    - name: DEPLOY_ENV
+      type: String
+      value: <+input>
+      allowedValues: "dev,sit,uat"
+
+  stages:
+
+    # ── STAGE 1: BUILD & TEST ──────────────────────────────────
+    - stage:
+        name: Build and Test
+        identifier: build_and_test
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+
+          execution:
+            steps:
+
+              - step:
+                  name: Compile
+                  identifier: compile
+                  type: Run
+                  spec:
+                    connectorRef: dockerhub_connector
+                    image: maven:3.9-eclipse-temurin-17
+                    command: mvn clean compile --no-transfer-progress
+                    resources:
+                      limits:
+                        cpu: "1"
+                        memory: 2Gi
+
+              - step:
+                  name: Unit Tests
+                  identifier: unit_tests
+                  type: Run
+                  spec:
+                    connectorRef: dockerhub_connector
+                    image: maven:3.9-eclipse-temurin-17
+                    command: mvn test --no-transfer-progress
+                    reports:
+                      type: JUnit
+                      spec:
+                        paths:
+                          - "**/target/surefire-reports/*.xml"
+
+              - step:
+                  name: Coverage Gate
+                  identifier: coverage_gate
+                  type: Run
+                  spec:
+                    connectorRef: dockerhub_connector
+                    image: maven:3.9-eclipse-temurin-17
+                    command: |
+                      COVERAGE=$(mvn jacoco:report | grep -oP 'Total.*?(\d+)%' | tail -1 | grep -oP '\d+')
+                      echo "Coverage: ${COVERAGE}%"
+                      if [ "$COVERAGE" -lt "<+variables.COVERAGE_THRESHOLD>" ]; then
+                        echo "Coverage ${COVERAGE}% is below threshold <+variables.COVERAGE_THRESHOLD>%"
+                        exit 1
+                      fi
+
+              - step:
+                  name: Package
+                  identifier: package
+                  type: Run
+                  spec:
+                    connectorRef: dockerhub_connector
+                    image: maven:3.9-eclipse-temurin-17
+                    command: mvn package -DskipTests --no-transfer-progress
+                    envVariables:
+                      BUILD_NUMBER: <+pipeline.sequenceId>
+
+    # ── STAGE 2: SECURITY SCANNING ────────────────────────────
+    - stage:
+        name: Security Scanning
+        identifier: security_scanning
+        type: CI
+        spec:
+          cloneCodebase: false
+          execution:
+            steps:
+
+              - step:
+                  name: SonarQube SAST
+                  identifier: sonarqube_sast
+                  type: Run
+                  spec:
+                    connectorRef: dockerhub_connector
+                    image: maven:3.9-eclipse-temurin-17
+                    command: |
+                      mvn sonar:sonar \
+                        -Dsonar.host.url=<+secrets.getValue("sonar_host_url")> \
+                        -Dsonar.login=<+secrets.getValue("sonar_token")> \
+                        -Dsonar.projectKey=<+variables.SERVICE_NAME> \
+                        --no-transfer-progress
+
+              - step:
+                  name: Sonar Quality Gate
+                  identifier: sonar_quality_gate
+                  type: Plugin
+                  spec:
+                    connectorRef: dockerhub_connector
+                    image: company/sonar-quality-gate-plugin:latest
+                    settings:
+                      sonar_host: <+secrets.getValue("sonar_host_url")>
+                      sonar_token: <+secrets.getValue("sonar_token")>
+                      project_key: <+variables.SERVICE_NAME>
+                      abort_on_failure: "true"
+
+              - step:
+                  name: OWASP Dependency Check
+                  identifier: owasp_dep_check
+                  type: Run
+                  spec:
+                    connectorRef: dockerhub_connector
+                    image: maven:3.9-eclipse-temurin-17
+                    command: |
+                      mvn org.owasp:dependency-check-maven:check \
+                        -DfailBuildOnCVSS=7 \
+                        --no-transfer-progress
+
+              - step:
+                  name: Gitleaks Secret Scan
+                  identifier: gitleaks
+                  type: Plugin
+                  spec:
+                    connectorRef: dockerhub_connector
+                    image: zricethezav/gitleaks:latest
+                    settings:
+                      scan_path: /harness
+                      fail_on_detection: "true"
+
+    # ── STAGE 3: BUILD & SCAN IMAGE ───────────────────────────
+    - stage:
+        name: Container Build and Scan
+        identifier: container_build_scan
+        type: CI
+        spec:
+          cloneCodebase: false
+          execution:
+            steps:
+
+              - step:
+                  name: Build Docker Image
+                  identifier: build_docker_image
+                  type: BuildAndPushDockerRegistry
+                  spec:
+                    connectorRef: docker_registry_connector
+                    repo: <+variables.DOCKER_REGISTRY>/<+variables.SERVICE_NAME>
+                    tags:
+                      - <+pipeline.sequenceId>
+                      - latest
+                    dockerfile: Dockerfile
+                    buildArgs:
+                      BUILD_NUMBER: <+pipeline.sequenceId>
+                      GIT_COMMIT: <+pipeline.properties.ci.codebase.commitSha>
+
+              - step:
+                  name: Trivy Image Scan
+                  identifier: trivy_scan
+                  type: Plugin
+                  spec:
+                    connectorRef: dockerhub_connector
+                    image: aquasec/trivy:latest
+                    settings:
+                      image_ref: <+variables.DOCKER_REGISTRY>/<+variables.SERVICE_NAME>:<+pipeline.sequenceId>
+                      severity: HIGH,CRITICAL
+                      exit_code: "1"
+                      output: table
+
+    # ── STAGE 4: INTEGRATION TESTS ────────────────────────────
+    - stage:
+        name: Integration Tests
+        identifier: integration_tests
+        type: CI
+        spec:
+          cloneCodebase: false
+          execution:
+            steps:
+              - step:
+                  name: Run Integration Tests
+                  identifier: run_integration_tests
+                  type: Run
+                  spec:
+                    connectorRef: dockerhub_connector
+                    image: maven:3.9-eclipse-temurin-17
+                    command: |
+                      mvn verify -P integration-tests -DskipUnitTests=true --no-transfer-progress
+                    reports:
+                      type: JUnit
+                      spec:
+                        paths:
+                          - "**/target/failsafe-reports/*.xml"
+
+    # ── STAGE 5: DEPLOY ────────────────────────────────────────
+    - stage:
+        name: Deploy
+        identifier: deploy
+        type: Deployment
+        spec:
+          deploymentType: Kubernetes
+
+          service:
+            serviceRef: payment_service
+            serviceInputs:
+              serviceDefinition:
+                type: Kubernetes
+                spec:
+                  artifacts:
+                    primary:
+                      primaryArtifactRef: <+input>
+                      sources:
+                        - identifier: payment_service_image
+                          spec:
+                            tag: <+pipeline.sequenceId>
+
+          environment:
+            environmentRef: <+variables.DEPLOY_ENV>
+            deployToAll: false
+            infrastructureDefinitions:
+              - identifier: eks_<+variables.DEPLOY_ENV>
+
+          execution:
+            steps:
+              - stepGroup:
+                  name: Canary Deployment
+                  identifier: canary_deployment
+                  steps:
+                    - step:
+                        name: Canary Deploy 10%
+                        identifier: canary_deploy_10
+                        type: K8sCanaryDeploy
+                        spec:
+                          instanceSelection:
+                            type: Percentage
+                            spec:
+                              percentage: 10
+
+                    - step:
+                        name: Canary Verify
+                        identifier: canary_verify
+                        type: Verify
+                        spec:
+                          type: Canary
+                          monitoredService:
+                            type: Default
+                          healthSources:
+                            - identifier: prometheus
+                          failOnNoAnalysis: true
+                          duration: 10m
+
+                    - step:
+                        name: Canary Delete
+                        identifier: canary_delete
+                        type: K8sCanaryDelete
+
+              - step:
+                  name: Rolling Deploy
+                  identifier: rolling_deploy
+                  type: K8sRollingDeploy
+                  spec:
+                    skipDryRun: false
+
+            rollbackSteps:
+              - step:
+                  name: Rollback
+                  identifier: rollback
+                  type: K8sRollingRollback
+
+        failureStrategies:
+          - onFailure:
+              errors:
+                - Verification
+              action:
+                type: StageRollback
+
+    # ── STAGE 6: POST-DEPLOY VERIFICATION ─────────────────────
+    - stage:
+        name: Smoke Tests
+        identifier: smoke_tests
+        type: CI
+        spec:
+          cloneCodebase: false
+          execution:
+            steps:
+              - step:
+                  name: Run Smoke Tests
+                  identifier: run_smoke_tests
+                  type: Run
+                  spec:
+                    connectorRef: dockerhub_connector
+                    image: maven:3.9-eclipse-temurin-17
+                    command: |
+                      mvn test \
+                        -P smoke-tests \
+                        -Dsmoke.base-url=https://<+variables.SERVICE_NAME>.<+variables.DEPLOY_ENV>.company.internal \
+                        --no-transfer-progress
+
+    # ── STAGE 7: APPROVAL GATE ────────────────────────────────
+    - stage:
+        name: UAT Promotion Approval
+        identifier: uat_approval
+        type: Approval
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Approve UAT Promotion
+                  identifier: approve_uat
+                  type: HarnessApproval
+                  spec:
+                    approvalMessage: |
+                      Please review and approve promotion of
+                      *<+variables.SERVICE_NAME>* build *<+pipeline.sequenceId>*
+                      to UAT environment.
+
+                      Build: <+pipeline.executionUrl>
+                    includePipelineExecutionHistory: true
+                    approvers:
+                      minimumCount: 1
+                      disallowPipelineExecutor: true
+                      userGroups:
+                        - product_owners
+                        - release_managers
+                    approverInputs:
+                      - name: RELEASE_NOTES
+                        defaultValue: ""

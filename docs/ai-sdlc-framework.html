@@ -1,0 +1,1660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI-Augmented SDLC Framework</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #06080f;
+    --surface: #0d1117;
+    --surface2: #161b22;
+    --border: #21262d;
+    --accent: #00d4aa;
+    --accent2: #7c3aed;
+    --accent3: #f59e0b;
+    --accent4: #3b82f6;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --text-dim: #484f58;
+    --danger: #f85149;
+    --glow: 0 0 20px rgba(0,212,170,0.15);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    min-height: 100vh;
+  }
+
+  /* ── NOISE OVERLAY ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ── HERO ── */
+  .hero {
+    position: relative;
+    padding: 80px 48px 60px;
+    border-bottom: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .hero::after {
+    content: '';
+    position: absolute;
+    top: -120px; right: -120px;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(0,212,170,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .hero-eyebrow {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.25em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .hero-eyebrow::before {
+    content: '';
+    width: 24px;
+    height: 1px;
+    background: var(--accent);
+  }
+
+  .hero h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(32px, 5vw, 58px);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin-bottom: 24px;
+  }
+
+  .hero h1 .line2 {
+    color: var(--accent);
+  }
+
+  .hero-sub {
+    font-size: 13px;
+    color: var(--text-muted);
+    max-width: 620px;
+    margin-bottom: 40px;
+    line-height: 1.8;
+  }
+
+  .hero-meta {
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+
+  .meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .meta-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-dim);
+  }
+
+  .meta-value {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .meta-value .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    background: rgba(0,212,170,0.1);
+    border: 1px solid rgba(0,212,170,0.25);
+    color: var(--accent);
+    border-radius: 3px;
+    font-size: 10px;
+  }
+
+  /* ── LAYOUT ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    min-height: calc(100vh - 280px);
+  }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    border-right: 1px solid var(--border);
+    padding: 32px 0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+  }
+
+  .sidebar-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-dim);
+    padding: 0 24px;
+    margin-bottom: 12px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 24px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border-left: 2px solid transparent;
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+
+  .nav-item:hover, .nav-item.active {
+    color: var(--text);
+    background: rgba(255,255,255,0.03);
+    border-left-color: var(--accent);
+  }
+
+  .nav-item.active {
+    color: var(--accent);
+  }
+
+  .nav-num {
+    font-size: 9px;
+    color: var(--text-dim);
+    width: 16px;
+    flex-shrink: 0;
+  }
+
+  .nav-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 16px 24px;
+  }
+
+  /* ── MAIN CONTENT ── */
+  .main {
+    padding: 48px 56px;
+    max-width: 900px;
+  }
+
+  /* ── PHASE SECTION ── */
+  .phase {
+    display: none;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .phase.active {
+    display: block;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── PHASE HEADER ── */
+  .phase-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 40px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .phase-icon {
+    width: 52px; height: 52px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+  }
+
+  .phase-title-block h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 26px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    letter-spacing: -0.01em;
+  }
+
+  .phase-title-block p {
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.6;
+    max-width: 560px;
+  }
+
+  .phase-badge {
+    margin-top: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    padding: 4px 10px;
+    border-radius: 3px;
+  }
+
+  /* ── CARDS ── */
+  .card-grid {
+    display: grid;
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+
+  .card-grid.cols2 { grid-template-columns: 1fr 1fr; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    transition: border-color 0.2s ease;
+  }
+
+  .card:hover { border-color: var(--text-dim); }
+
+  .card-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .card-title .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .card ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .card ul li {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    padding-left: 14px;
+    position: relative;
+  }
+
+  .card ul li::before {
+    content: '›';
+    position: absolute;
+    left: 0;
+    color: var(--text-dim);
+  }
+
+  /* ── CODE BLOCK ── */
+  .code-block {
+    background: #010409;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+
+  .code-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .code-lang {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--text-dim);
+  }
+
+  .code-dots {
+    display: flex;
+    gap: 6px;
+  }
+
+  .code-dots span {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+
+  pre {
+    padding: 20px;
+    overflow-x: auto;
+    font-size: 11px;
+    line-height: 1.8;
+    color: #c9d1d9;
+  }
+
+  .kw { color: #ff7b72; }
+  .str { color: #a5d6ff; }
+  .cm { color: #484f58; font-style: italic; }
+  .fn { color: #d2a8ff; }
+  .num { color: #79c0ff; }
+  .prop { color: #7ee787; }
+
+  /* ── PROCESS FLOW ── */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-bottom: 32px;
+  }
+
+  .flow-step {
+    display: flex;
+    gap: 20px;
+    position: relative;
+  }
+
+  .flow-step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 15px;
+    top: 36px;
+    bottom: -1px;
+    width: 1px;
+    background: var(--border);
+  }
+
+  .flow-marker {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    flex-shrink: 0;
+    margin-top: 2px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .flow-body {
+    padding-bottom: 28px;
+    flex: 1;
+  }
+
+  .flow-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  .flow-desc {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    line-height: 1.7;
+  }
+
+  .flow-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .ftag {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+
+  /* ── TABLE ── */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 32px;
+    font-size: 11.5px;
+  }
+
+  .data-table th {
+    text-align: left;
+    padding: 10px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  .data-table td {
+    padding: 10px 16px;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    vertical-align: top;
+  }
+
+  .data-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* ── CALLOUT ── */
+  .callout {
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    font-size: 12px;
+    line-height: 1.7;
+  }
+
+  .callout.info {
+    background: rgba(59,130,246,0.08);
+    border: 1px solid rgba(59,130,246,0.25);
+    color: #93c5fd;
+  }
+
+  .callout.warn {
+    background: rgba(245,158,11,0.08);
+    border: 1px solid rgba(245,158,11,0.25);
+    color: #fcd34d;
+  }
+
+  .callout.success {
+    background: rgba(0,212,170,0.07);
+    border: 1px solid rgba(0,212,170,0.2);
+    color: #6ee7d8;
+  }
+
+  .callout-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+  /* ── SECTION TITLE ── */
+  .section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    margin-top: 36px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── OVERVIEW GRID ── */
+  .overview-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 40px;
+  }
+
+  .ov-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .ov-card:hover {
+    border-color: var(--text-dim);
+    transform: translateY(-2px);
+  }
+
+  .ov-card .num {
+    font-family: 'Syne', sans-serif;
+    font-size: 36px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 8px;
+    opacity: 0.15;
+  }
+
+  .ov-card .label {
+    font-family: 'Syne', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .ov-card .desc {
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .ov-card .phase-color-bar {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  /* Color themes per phase */
+  .c-teal { color: #00d4aa; border-color: rgba(0,212,170,0.3) !important; }
+  .c-purple { color: #7c3aed; border-color: rgba(124,58,237,0.3) !important; }
+  .c-amber { color: #f59e0b; border-color: rgba(245,158,11,0.3) !important; }
+  .c-blue { color: #3b82f6; border-color: rgba(59,130,246,0.3) !important; }
+  .c-rose { color: #f43f5e; border-color: rgba(244,63,94,0.3) !important; }
+  .c-emerald { color: #10b981; border-color: rgba(16,185,129,0.3) !important; }
+  .c-orange { color: #f97316; border-color: rgba(249,115,22,0.3) !important; }
+  .c-sky { color: #0ea5e9; border-color: rgba(14,165,233,0.3) !important; }
+
+  .bg-teal { background: rgba(0,212,170,0.1); color: #00d4aa; border-color: rgba(0,212,170,0.25) !important; }
+  .bg-purple { background: rgba(124,58,237,0.12); color: #a78bfa; border-color: rgba(124,58,237,0.3) !important; }
+  .bg-amber { background: rgba(245,158,11,0.1); color: #fcd34d; border-color: rgba(245,158,11,0.25) !important; }
+  .bg-blue { background: rgba(59,130,246,0.1); color: #93c5fd; border-color: rgba(59,130,246,0.25) !important; }
+  .bg-rose { background: rgba(244,63,94,0.1); color: #fda4af; border-color: rgba(244,63,94,0.25) !important; }
+  .bg-emerald { background: rgba(16,185,129,0.1); color: #6ee7b7; border-color: rgba(16,185,129,0.25) !important; }
+  .bg-orange { background: rgba(249,115,22,0.1); color: #fdba74; border-color: rgba(249,115,22,0.25) !important; }
+  .bg-sky { background: rgba(14,165,233,0.1); color: #7dd3fc; border-color: rgba(14,165,233,0.25) !important; }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ── PRINT / RESPONSIVE ── */
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+    .main { padding: 32px 24px; }
+    .overview-grid { grid-template-columns: repeat(2,1fr); }
+    .card-grid.cols2 { grid-template-columns: 1fr; }
+  }
+
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 500;
+    margin-left: 6px;
+  }
+
+  .highlight-text { color: var(--accent); font-weight: 500; }
+
+  .tools-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .tool-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+
+  .tool-chip .ti { font-size: 12px; }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-eyebrow">AI-Augmented Software Delivery</div>
+  <h1>
+    End-to-End<br>
+    <span class="line2">AI-Driven SDLC</span><br>
+    Framework
+  </h1>
+  <p class="hero-sub">
+    A comprehensive, stakeholder-ready blueprint for integrating AI capabilities across the entire software delivery lifecycle — from requirement intake to production deployment on EKS and OCP.
+  </p>
+  <div class="hero-meta">
+    <div class="meta-item">
+      <div class="meta-label">Version</div>
+      <div class="meta-value"><span class="tag">v1.0 — Draft</span></div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Phases</div>
+      <div class="meta-value">8 Phases · End-to-End</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Target Teams</div>
+      <div class="meta-value">Engineering · Architecture · DevOps · QA</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">AI Models</div>
+      <div class="meta-value">Claude · GitHub Copilot · Generative AI Tooling</div>
+    </div>
+  </div>
+</div>
+
+<!-- LAYOUT -->
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="sidebar-label">Navigation</div>
+
+    <div class="nav-item active" onclick="showPhase('overview', this)">
+      <span class="nav-num">00</span> Framework Overview
+    </div>
+    <div class="nav-divider"></div>
+    <div class="sidebar-label">Phases</div>
+    <div class="nav-item" onclick="showPhase('p1', this)">
+      <span class="nav-num">01</span> Requirement Intake
+    </div>
+    <div class="nav-item" onclick="showPhase('p2', this)">
+      <span class="nav-num">02</span> Design Documents
+    </div>
+    <div class="nav-item" onclick="showPhase('p3', this)">
+      <span class="nav-num">03</span> Story Creation
+    </div>
+    <div class="nav-item" onclick="showPhase('p4', this)">
+      <span class="nav-num">04</span> Code Development
+    </div>
+    <div class="nav-item" onclick="showPhase('p5', this)">
+      <span class="nav-num">05</span> Automated Testing
+    </div>
+    <div class="nav-item" onclick="showPhase('p6', this)">
+      <span class="nav-num">06</span> CI/CD Pipeline
+    </div>
+    <div class="nav-item" onclick="showPhase('p7', this)">
+      <span class="nav-num">07</span> Deployment (EKS/OCP)
+    </div>
+    <div class="nav-item" onclick="showPhase('p8', this)">
+      <span class="nav-num">08</span> Governance & Guardrails
+    </div>
+    <div class="nav-divider"></div>
+    <div class="nav-item" onclick="showPhase('tooling', this)">
+      <span class="nav-num">◈</span> Tooling Reference
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- ══ OVERVIEW ══ -->
+    <section class="phase active" id="overview">
+      <div class="phase-header">
+        <div class="phase-icon" style="background:rgba(0,212,170,0.1); color:#00d4aa; font-size:26px;">⬡</div>
+        <div class="phase-title-block">
+          <h2>Framework Overview</h2>
+          <p>An eight-phase, AI-augmented delivery model that integrates generative AI at every stage — from requirement intake to production operations — while preserving human oversight, code quality, and security.</p>
+        </div>
+      </div>
+
+      <div class="callout success">
+        <div class="callout-icon">💡</div>
+        <div><strong>Core Philosophy:</strong> AI accelerates and assists; humans review and approve. Every phase produces a verifiable artifact. The pipeline only advances on green gates.</div>
+      </div>
+
+      <div class="section-title">Eight Phases at a Glance</div>
+
+      <div class="overview-grid">
+        <div class="ov-card c-teal" onclick="showPhase('p1', document.querySelector('[onclick*=p1]'))">
+          <div class="num">01</div>
+          <div class="label">Requirement Intake</div>
+          <div class="desc">Unlock, parse & validate raw requirements from any source</div>
+          <div class="phase-color-bar" style="background:#00d4aa"></div>
+        </div>
+        <div class="ov-card c-purple" onclick="showPhase('p2', document.querySelector('[onclick*=p2]'))">
+          <div class="num">02</div>
+          <div class="label">Design Documents</div>
+          <div class="desc">AI-generated HLD & LLD with architecture diagrams</div>
+          <div class="phase-color-bar" style="background:#7c3aed"></div>
+        </div>
+        <div class="ov-card c-amber" onclick="showPhase('p3', document.querySelector('[onclick*=p3]'))">
+          <div class="num">03</div>
+          <div class="label">Story Creation</div>
+          <div class="desc">Epics → Stories → Tasks with acceptance criteria</div>
+          <div class="phase-color-bar" style="background:#f59e0b"></div>
+        </div>
+        <div class="ov-card c-blue" onclick="showPhase('p4', document.querySelector('[onclick*=p4]'))">
+          <div class="num">04</div>
+          <div class="label">Code Development</div>
+          <div class="desc">Standards-compliant code, unit tests, SAST scanning</div>
+          <div class="phase-color-bar" style="background:#3b82f6"></div>
+        </div>
+        <div class="ov-card c-rose" onclick="showPhase('p5', document.querySelector('[onclick*=p5]'))">
+          <div class="num">05</div>
+          <div class="label">Automated Testing</div>
+          <div class="desc">Functional, integration, performance, security testing</div>
+          <div class="phase-color-bar" style="background:#f43f5e"></div>
+        </div>
+        <div class="ov-card c-emerald" onclick="showPhase('p6', document.querySelector('[onclick*=p6]'))">
+          <div class="num">06</div>
+          <div class="label">CI/CD Pipeline</div>
+          <div class="desc">Jenkins / Harness pipelines with quality gates</div>
+          <div class="phase-color-bar" style="background:#10b981"></div>
+        </div>
+        <div class="ov-card c-orange" onclick="showPhase('p7', document.querySelector('[onclick*=p7]'))">
+          <div class="num">07</div>
+          <div class="label">Deployment</div>
+          <div class="desc">Amazon EKS and on-prem OCP with canary & blue/green</div>
+          <div class="phase-color-bar" style="background:#f97316"></div>
+        </div>
+        <div class="ov-card c-sky" onclick="showPhase('p8', document.querySelector('[onclick*=p8]'))">
+          <div class="num">08</div>
+          <div class="label">Governance</div>
+          <div class="desc">AI guardrails, audit trail, human approval gates</div>
+          <div class="phase-color-bar" style="background:#0ea5e9"></div>
+        </div>
+      </div>
+
+      <div class="section-title">Delivery Flow</div>
+      <div class="flow">
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(0,212,170,0.15); color:#00d4aa;">R</div>
+          <div class="flow-body">
+            <div class="flow-title">Requirement Source</div>
+            <div class="flow-desc">Jira Epic, Confluence page, PRD, email or meeting transcript — any artifact is valid input.</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(124,58,237,0.15); color:#a78bfa;">D</div>
+          <div class="flow-body">
+            <div class="flow-title">AI Design Generation → Architect Review</div>
+            <div class="flow-desc">AI drafts HLD + LLD. Architect reviews, adjusts, approves. Approved design is locked.</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(245,158,11,0.15); color:#fcd34d;">S</div>
+          <div class="flow-body">
+            <div class="flow-title">AI Story Decomposition → PO Approval</div>
+            <div class="flow-desc">Stories created with ACs, pushed to Jira. Product Owner approves sprint-ready backlog.</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(59,130,246,0.15); color:#93c5fd;">C</div>
+          <div class="flow-body">
+            <div class="flow-title">AI-Assisted Code + Peer Review</div>
+            <div class="flow-desc">Engineers co-develop with Copilot, SAST runs on PR, peer review gates merge.</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(244,63,94,0.15); color:#fda4af;">T</div>
+          <div class="flow-body">
+            <div class="flow-title">AI Test Generation → Full Test Suite Run</div>
+            <div class="flow-desc">Unit, integration, E2E, contract, performance and security tests — all generated and executed automatically.</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(16,185,129,0.15); color:#6ee7b7;">P</div>
+          <div class="flow-body">
+            <div class="flow-title">Pipeline Build → Quality Gates</div>
+            <div class="flow-desc">Jenkins/Harness orchestrates build, test, scan, and image publish. Gate failures block promotion.</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(249,115,22,0.15); color:#fdba74;">▲</div>
+          <div class="flow-body">
+            <div class="flow-title">Deploy → Observe → Promote</div>
+            <div class="flow-desc">Canary or Blue/Green deploy to EKS or OCP. Prometheus/Grafana monitors. Rollback on SLO breach.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout warn">
+        <div class="callout-icon">⚡</div>
+        <div><strong>Key Metric Target:</strong> Reduce average feature-to-production lead time by <strong>40–60%</strong> while increasing test coverage baseline to >85% and maintaining zero critical SAST findings in production.</div>
+      </div>
+    </section>
+
+    <!-- ══ PHASE 1 ══ -->
+    <section class="phase" id="p1">
+      <div class="phase-header">
+        <div class="phase-icon bg-teal" style="font-size:22px;">📥</div>
+        <div class="phase-title-block">
+          <h2>Phase 01 — Requirement Intake</h2>
+          <p>Structured ingestion of requirements from any source format into a canonical, machine-readable specification ready for downstream AI processing.</p>
+          <div class="phase-badge bg-teal">Pre-condition to all phases</div>
+        </div>
+      </div>
+
+      <div class="section-title">Input Sources Supported</div>
+      <div class="card-grid cols2">
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#00d4aa"></div>Structured Sources</div>
+          <ul>
+            <li>Jira Epics / Stories via REST API</li>
+            <li>Confluence pages (API or export)</li>
+            <li>GitHub / Bitbucket Issues</li>
+            <li>Product Requirement Documents (PRD)</li>
+            <li>Azure DevOps Work Items</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#a78bfa"></div>Unstructured Sources</div>
+          <ul>
+            <li>Email threads (via Microsoft Graph)</li>
+            <li>Meeting transcripts / recordings</li>
+            <li>Whiteboard photos / sketches</li>
+            <li>Slack / Teams conversation exports</li>
+            <li>Word / PDF documents</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section-title">AI Processing Steps</div>
+      <div class="flow">
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(0,212,170,0.15); color:#00d4aa; font-size:10px;">1</div>
+          <div class="flow-body">
+            <div class="flow-title">Ingest & Parse</div>
+            <div class="flow-desc">AI reads the source artifact and extracts: <span class="highlight-text">business objective, functional requirements, non-functional requirements (NFRs), constraints, and out-of-scope items</span>. Ambiguities are flagged.</div>
+            <div class="flow-tags"><span class="ftag">Claude / GPT-4</span><span class="ftag">LangChain</span><span class="ftag">Jira REST API</span></div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(0,212,170,0.15); color:#00d4aa; font-size:10px;">2</div>
+          <div class="flow-body">
+            <div class="flow-title">Clarification Loop</div>
+            <div class="flow-desc">AI surfaces a Q&A list for ambiguous requirements. Business Analyst / PO resolves via structured interview or async review.</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(0,212,170,0.15); color:#00d4aa; font-size:10px;">3</div>
+          <div class="flow-body">
+            <div class="flow-title">Canonical Spec Generation</div>
+            <div class="flow-desc">Output: <span class="highlight-text">Locked Requirement Specification (LRS)</span> — a structured JSON/Markdown document containing all functional, NFR, security, and integration requirements with unique IDs for traceability.</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(0,212,170,0.15); color:#00d4aa; font-size:10px;">4</div>
+          <div class="flow-body">
+            <div class="flow-title">Human Approval Gate ✓</div>
+            <div class="flow-desc">Architect + PO review and digitally approve the LRS. Only approved LRS proceeds. Version-controlled in Git.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout info">
+        <div class="callout-icon">🔗</div>
+        <div><strong>Traceability:</strong> Every downstream artifact (design, story, test, code) references an LRS requirement ID, enabling full end-to-end traceability and impact analysis.</div>
+      </div>
+    </section>
+
+    <!-- ══ PHASE 2 ══ -->
+    <section class="phase" id="p2">
+      <div class="phase-header">
+        <div class="phase-icon bg-purple" style="font-size:22px;">📐</div>
+        <div class="phase-title-block">
+          <h2>Phase 02 — Design Documents</h2>
+          <p>AI generates both High-Level Design (HLD) and Low-Level Design (LLD) from the locked requirement spec. Architects review, refine, and lock the design before any code is written.</p>
+        </div>
+      </div>
+
+      <div class="section-title">High-Level Design (HLD)</div>
+      <div class="card-grid cols2">
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#a78bfa"></div>AI-Generated Sections</div>
+          <ul>
+            <li>System context diagram (C4 Level 1)</li>
+            <li>Component architecture (C4 Level 2)</li>
+            <li>Technology stack selection with rationale</li>
+            <li>Data flow overview</li>
+            <li>Integration points (APIs, MQ, DB)</li>
+            <li>Security zones and trust boundaries</li>
+            <li>NFR mapping (scalability, HA, DR)</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#7c3aed"></div>Architect Refinement Areas</div>
+          <ul>
+            <li>Validate against enterprise architecture standards</li>
+            <li>Review cloud vs on-prem placement decisions</li>
+            <li>Confirm integration patterns (sync/async)</li>
+            <li>Review network topology and security groups</li>
+            <li>Sign off on technology choices</li>
+            <li>Add ADRs (Architecture Decision Records)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section-title">Low-Level Design (LLD)</div>
+      <div class="card-grid cols2">
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#a78bfa"></div>AI-Generated Sections</div>
+          <ul>
+            <li>Service decomposition & responsibilities</li>
+            <li>Class / domain model diagrams</li>
+            <li>Database schema (tables, indexes, relations)</li>
+            <li>API contracts (OpenAPI 3.0 spec)</li>
+            <li>Message queue topics & schemas</li>
+            <li>Sequence diagrams per use case</li>
+            <li>Error handling & retry strategy</li>
+            <li>Configuration & secrets management</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#7c3aed"></div>Coding Standards Applied</div>
+          <ul>
+            <li>Package structure conventions (company standard)</li>
+            <li>Naming conventions enforced via checkstyle</li>
+            <li>Spring Boot configuration patterns</li>
+            <li>Exception hierarchy design</li>
+            <li>Logging framework (SLF4J + correlation IDs)</li>
+            <li>Security: OAuth2 / OIDC flows specified</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section-title">Tooling for Diagram Generation</div>
+      <div class="code-block">
+        <div class="code-header">
+          <div class="code-lang">Prompt Template — LLD API Contract</div>
+          <div class="code-dots"><span style="background:#f85149"></span><span style="background:#f59e0b"></span><span style="background:#3fb950"></span></div>
+        </div>
+        <pre><span class="cm"># AI Prompt used to generate OpenAPI 3.0 spec from LRS</span>
+
+<span class="kw">Given</span> the Locked Requirement Specification:
+  - Requirement IDs: [<span class="str">LRS-001</span>, <span class="str">LRS-002</span>, <span class="str">LRS-003</span>]
+  - Integration type: <span class="str">REST/JSON synchronous</span>
+  - Authentication: <span class="str">OAuth2 Bearer Token</span>
+  - Spring Boot service name: <span class="str">payment-service</span>
+
+<span class="kw">Generate</span>:
+  1. OpenAPI 3.0 YAML spec with all endpoints
+  2. Request/Response schemas following company naming conventions
+  3. Error response model conforming to RFC 7807
+  4. Security scheme definition
+  5. Example requests and responses
+
+<span class="kw">Follow</span>:
+  - Company API standards document v2.3
+  - RESTful resource naming (plural nouns, kebab-case)
+  - HTTP status codes per company conventions</pre>
+      </div>
+
+      <div class="callout success">
+        <div class="callout-icon">✅</div>
+        <div><strong>Gate:</strong> Design documents are version-controlled in Confluence/Git. No story creation or code begins until both HLD and LLD bear an architect's digital approval stamp with version lock.</div>
+      </div>
+    </section>
+
+    <!-- ══ PHASE 3 ══ -->
+    <section class="phase" id="p3">
+      <div class="phase-header">
+        <div class="phase-icon bg-amber" style="font-size:22px;">📋</div>
+        <div class="phase-title-block">
+          <h2>Phase 03 — Story Creation</h2>
+          <p>AI decomposes the locked design and requirements into a structured backlog of Epics, Features, Stories, and Tasks with acceptance criteria, story points, and dependency links — ready for sprint planning.</p>
+        </div>
+      </div>
+
+      <div class="section-title">Decomposition Hierarchy</div>
+      <div class="flow">
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(245,158,11,0.15); color:#fcd34d; font-size:9px;">EP</div>
+          <div class="flow-body">
+            <div class="flow-title">Epic</div>
+            <div class="flow-desc">Large body of work aligned to a business outcome. AI maps each LRS section to one or more epics. Business value, target user, and success metric are defined.</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(245,158,11,0.15); color:#fcd34d; font-size:9px;">FT</div>
+          <div class="flow-body">
+            <div class="flow-title">Feature</div>
+            <div class="flow-desc">Mid-level grouping within an epic. Maps to a specific LLD component or service capability.</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(245,158,11,0.15); color:#fcd34d; font-size:9px;">US</div>
+          <div class="flow-body">
+            <div class="flow-title">User Story</div>
+            <div class="flow-desc"><span class="highlight-text">"As a [persona], I want [goal] so that [benefit]"</span> — AI generates stories from each LLD use case, with: Acceptance Criteria (Given/When/Then), Definition of Done checklist, Estimate guidance, LRS traceability ID, and non-functional requirements attached.</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(245,158,11,0.15); color:#fcd34d; font-size:9px;">TK</div>
+          <div class="flow-body">
+            <div class="flow-title">Technical Tasks</div>
+            <div class="flow-desc">Sub-tasks for each story: API implementation, DB migration, unit tests, integration tests, security review, documentation updates.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-title">Story Quality Checklist (AI-enforced)</div>
+      <table class="data-table">
+        <thead><tr><th>Criterion</th><th>Check</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>INVEST compliant</td><td style="color:#6ee7b7">✓ Auto-checked</td><td>Independent, Negotiable, Valuable, Estimable, Small, Testable</td></tr>
+          <tr><td>Acceptance criteria present</td><td style="color:#6ee7b7">✓ Auto-checked</td><td>Minimum 2 scenarios per story (happy path + failure)</td></tr>
+          <tr><td>LRS traceability ID</td><td style="color:#6ee7b7">✓ Auto-linked</td><td>Every story links back to requirement ID</td></tr>
+          <tr><td>Security consideration</td><td style="color:#6ee7b7">✓ Auto-checked</td><td>OWASP top 10 relevance noted if applicable</td></tr>
+          <tr><td>NFR note attached</td><td style="color:#6ee7b7">✓ Auto-added</td><td>Performance, scalability, or reliability note</td></tr>
+          <tr><td>PO review complete</td><td style="color:#fcd34d">⚑ Manual gate</td><td>Human approval before sprint placement</td></tr>
+        </tbody>
+      </table>
+
+      <div class="section-title">Jira Integration</div>
+      <div class="card-grid cols2">
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#fcd34d"></div>Automated via Jira API</div>
+          <ul>
+            <li>Epic, Story, Task creation via REST API</li>
+            <li>Epic links and parent-child hierarchy set</li>
+            <li>Labels: LRS-ID, component, sprint target</li>
+            <li>Story point estimates (AI-suggested)</li>
+            <li>Dependency / blocking links created</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#f59e0b"></div>Confluence Sync</div>
+          <ul>
+            <li>Story map published to Confluence</li>
+            <li>Design-to-story traceability matrix</li>
+            <li>Sprint planning sheet auto-generated</li>
+            <li>Confluence page linked from each Jira epic</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ PHASE 4 ══ -->
+    <section class="phase" id="p4">
+      <div class="phase-header">
+        <div class="phase-icon bg-blue" style="font-size:22px;">⌨️</div>
+        <div class="phase-title-block">
+          <h2>Phase 04 — Code Development</h2>
+          <p>AI-assisted development with GitHub Copilot and Claude for code generation, following company coding standards, security-first principles, SOLID design, and complete unit test coverage.</p>
+        </div>
+      </div>
+
+      <div class="section-title">Development Workflow</div>
+      <div class="flow">
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(59,130,246,0.15); color:#93c5fd; font-size:10px;">1</div>
+          <div class="flow-body">
+            <div class="flow-title">Story Assignment & Branch Creation</div>
+            <div class="flow-desc">Developer picks story from sprint board. Git branch created following convention: <span class="highlight-text">feature/LRS-{id}-{short-description}</span>. AI reads the story + LLD and generates a code scaffold.</div>
+            <div class="flow-tags"><span class="ftag">GitHub / Bitbucket</span><span class="ftag">Jira Smart Commits</span></div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(59,130,246,0.15); color:#93c5fd; font-size:10px;">2</div>
+          <div class="flow-body">
+            <div class="flow-title">AI Scaffold Generation</div>
+            <div class="flow-desc">Claude/Copilot generates: Spring Boot controller, service, repository, DTOs, mappers, exception handlers, and configuration classes — all following company package structure. Unit test stubs generated alongside production code.</div>
+            <div class="flow-tags"><span class="ftag">GitHub Copilot</span><span class="ftag">Claude API</span><span class="ftag">Spring Boot 3.x</span></div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(59,130,246,0.15); color:#93c5fd; font-size:10px;">3</div>
+          <div class="flow-body">
+            <div class="flow-title">Engineer Review & Completion</div>
+            <div class="flow-desc">Engineer reviews scaffold, adds business logic, refines edge cases, completes unit tests to >85% coverage. All security patterns (input validation, parameterized queries, auth checks) are enforced by linter rules.</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(59,130,246,0.15); color:#93c5fd; font-size:10px;">4</div>
+          <div class="flow-body">
+            <div class="flow-title">Pre-commit Checks</div>
+            <div class="flow-desc">Git pre-commit hooks run: Checkstyle, SpotBugs, OWASP dependency check, secret scanning (Gitleaks). PR blocked if any critical finding.</div>
+            <div class="flow-tags"><span class="ftag">Gitleaks</span><span class="ftag">Checkstyle</span><span class="ftag">SpotBugs</span><span class="ftag">OWASP Dep-Check</span></div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-marker" style="background:rgba(59,130,246,0.15); color:#93c5fd; font-size:10px;">5</div>
+          <div class="flow-body">
+            <div class="flow-title">Pull Request + AI Code Review</div>
+            <div class="flow-desc">AI (CodeRabbit / Claude) performs automated PR review: logic correctness, security, performance, test coverage gaps. Human peer review mandatory. Minimum 1 senior engineer approval required.</div>
+            <div class="flow-tags"><span class="ftag">CodeRabbit</span><span class="ftag">SonarQube</span><span class="ftag">GitHub Actions</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-title">Security-First Development Standards</div>
+      <div class="card-grid cols2">
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#93c5fd"></div>OWASP Top 10 Controls</div>
+          <ul>
+            <li>Input validation on all entry points</li>
+            <li>Parameterized queries only (no string concat SQL)</li>
+            <li>Output encoding for all user-facing data</li>
+            <li>Authentication checks via Spring Security</li>
+            <li>Sensitive data encrypted at rest and in transit</li>
+            <li>CORS policy enforced at gateway level</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#3b82f6"></div>Code Quality Gates</div>
+          <ul>
+            <li>SonarQube Quality Gate: 0 blocker, 0 critical</li>
+            <li>Unit test coverage ≥ 85%</li>
+            <li>Cyclomatic complexity ≤ 10</li>
+            <li>No hardcoded credentials (Gitleaks)</li>
+            <li>Dependency CVE scan: 0 HIGH or CRITICAL</li>
+            <li>Checkstyle: 0 violations</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section-title">Sample AI Scaffold Prompt</div>
+      <div class="code-block">
+        <div class="code-header">
+          <div class="code-lang">Code Generation Prompt Template</div>
+          <div class="code-dots"><span style="background:#f85149"></span><span style="background:#f59e0b"></span><span style="background:#3fb950"></span></div>
+        </div>
+        <pre><span class="cm">// AI prompt used in VS Code / IntelliJ Copilot chat</span>
+
+<span class="kw">Generate</span> a Spring Boot 3.x REST controller for story <span class="str">LRS-042</span>:
+
+<span class="kw">Context</span>:
+  - Service: payment-service
+  - Package base: com.company.payments
+  - Auth: Spring Security OAuth2 Resource Server
+  - DB: PostgreSQL via Spring Data JPA
+  - Async events: IBM MQ via JMS
+
+<span class="kw">Requirements from LLD</span>:
+  - POST /api/v1/payments — create payment
+  - GET  /api/v1/payments/{id} — get by ID
+  - Request DTO: PaymentRequestDto (validated)
+  - Response DTO: PaymentResponseDto
+  - Service layer with transaction boundaries
+  - JPA entity: Payment
+  - Error handling: GlobalExceptionHandler (RFC 7807)
+
+<span class="kw">Standards</span>:
+  - Lombok annotations
+  - MapStruct for mapping
+  - SLF4J logging with MDC correlation ID
+  - @Validated on controller
+  - Unit test class skeleton with Mockito</pre>
+      </div>
+    </section>
+
+    <!-- ══ PHASE 5 ══ -->
+    <section class="phase" id="p5">
+      <div class="phase-header">
+        <div class="phase-icon bg-rose" style="font-size:22px;">🧪</div>
+        <div class="phase-title-block">
+          <h2>Phase 05 — Automated Testing</h2>
+          <p>Comprehensive, AI-generated test suites covering unit, integration, contract, end-to-end, performance, and security testing — all automated, all mandatory in the pipeline.</p>
+        </div>
+      </div>
+
+      <div class="section-title">Testing Pyramid</div>
+      <div class="card-grid cols2">
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#fda4af"></div>Unit Tests (70%)</div>
+          <ul>
+            <li>JUnit 5 + Mockito — AI generates from LLD</li>
+            <li>Coverage target: ≥85% line and branch</li>
+            <li>All edge cases from acceptance criteria covered</li>
+            <li>Parameterized tests for data-driven scenarios</li>
+            <li>Tool: JaCoCo for coverage reporting</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#f43f5e"></div>Integration Tests (20%)</div>
+          <ul>
+            <li>Spring Boot Test with @SpringBootTest</li>
+            <li>Testcontainers for PostgreSQL, IBM MQ</li>
+            <li>WireMock for external service stubs</li>
+            <li>AI generates scenarios from sequence diagrams</li>
+            <li>Database migration tested via Flyway</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#fda4af"></div>Contract Tests</div>
+          <ul>
+            <li>Pact for consumer-driven contract testing</li>
+            <li>Contract published to Pact Broker</li>
+            <li>API contracts validated against OpenAPI spec</li>
+            <li>AI generates Pact tests from OpenAPI YAML</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#f43f5e"></div>End-to-End Tests (10%)</div>
+          <ul>
+            <li>Playwright or REST-Assured for API E2E flows</li>
+            <li>AI generates scenarios from user stories</li>
+            <li>Run in a dedicated test environment (UAT)</li>
+            <li>Smoke test subset run post-deployment</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#fda4af"></div>Performance Tests</div>
+          <ul>
+            <li>Gatling or k6 load test scripts — AI generated</li>
+            <li>SLA baselines from NFR section of LRS</li>
+            <li>P95 response time, TPS, error rate thresholds</li>
+            <li>Run in pipeline on every release branch</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#f43f5e"></div>Security Tests (DAST)</div>
+          <ul>
+            <li>OWASP ZAP automated scan on deployed service</li>
+            <li>Nikto for server misconfiguration checks</li>
+            <li>Trivy for container image CVE scanning</li>
+            <li>Zero HIGH/CRITICAL findings policy</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="callout info">
+        <div class="callout-icon">🤖</div>
+        <div><strong>AI Test Generation:</strong> Tests are generated using the locked LLD, OpenAPI spec, and acceptance criteria as input. Each test is tagged with the LRS requirement ID it validates — full traceability from test to requirement.</div>
+      </div>
+
+      <div class="section-title">Test Data Management</div>
+      <div class="card">
+        <div class="card-title"><div class="dot" style="background:#fda4af"></div>Strategy</div>
+        <ul>
+          <li>AI generates synthetic test data sets from schema definitions</li>
+          <li>No PII in test environments — data masked/anonymized</li>
+          <li>Testcontainers seeds DB state before each integration test suite</li>
+          <li>WireMock stubs generated from real API recordings (sanitized)</li>
+          <li>Test data versioned in Git alongside test code</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ══ PHASE 6 ══ -->
+    <section class="phase" id="p6">
+      <div class="phase-header">
+        <div class="phase-icon bg-emerald" style="font-size:22px;">🔁</div>
+        <div class="phase-title-block">
+          <h2>Phase 06 — CI/CD Pipeline</h2>
+          <p>Fully automated build, test, scan, and publish pipeline using Jenkins or Harness, with enforced quality gates at every stage. Integrates with existing enterprise pipeline infrastructure.</p>
+        </div>
+      </div>
+
+      <div class="section-title">Pipeline Architecture</div>
+      <div class="code-block">
+        <div class="code-header">
+          <div class="code-lang">Jenkins Declarative Pipeline — Stages Overview</div>
+          <div class="code-dots"><span style="background:#f85149"></span><span style="background:#f59e0b"></span><span style="background:#3fb950"></span></div>
+        </div>
+        <pre><span class="kw">pipeline</span> {
+  <span class="kw">agent</span> { <span class="prop">kubernetes</span> { <span class="cm">/* pod template */</span> } }
+
+  <span class="kw">stages</span> {
+
+    <span class="cm">/* ── STAGE 1: CHECKOUT ── */</span>
+    <span class="kw">stage</span>(<span class="str">'Checkout'</span>) { <span class="cm">/* git clone, set build metadata */</span> }
+
+    <span class="cm">/* ── STAGE 2: BUILD ── */</span>
+    <span class="kw">stage</span>(<span class="str">'Build'</span>) {
+      steps { sh <span class="str">'mvn clean package -DskipTests'</span> }
+    }
+
+    <span class="cm">/* ── STAGE 3: UNIT TESTS + COVERAGE ── */</span>
+    <span class="kw">stage</span>(<span class="str">'Unit Test'</span>) {
+      steps { sh <span class="str">'mvn test'</span> }
+      post { <span class="prop">always</span> { <span class="fn">junit</span>(<span class="str">'**/surefire-reports/*.xml'</span>) } }
+    }
+
+    <span class="cm">/* ── STAGE 4: SAST — SONARQUBE ── */</span>
+    <span class="kw">stage</span>(<span class="str">'SAST'</span>) {
+      steps { <span class="fn">withSonarQubeEnv</span>(<span class="str">'sonar-server'</span>) {
+        sh <span class="str">'mvn sonar:sonar'</span>
+      }}
+      post { always { <span class="fn">waitForQualityGate</span>(<span class="prop">abortPipeline: true</span>) } }
+    }
+
+    <span class="cm">/* ── STAGE 5: DEPENDENCY CVE SCAN ── */</span>
+    <span class="kw">stage</span>(<span class="str">'Dependency Check'</span>) {
+      steps { sh <span class="str">'mvn org.owasp:dependency-check-maven:check'</span> }
+    }
+
+    <span class="cm">/* ── STAGE 6: DOCKER BUILD + TRIVY SCAN ── */</span>
+    <span class="kw">stage</span>(<span class="str">'Container Build & Scan'</span>) {
+      steps {
+        sh <span class="str">'docker build -t registry/service:${BUILD_NUMBER} .'</span>
+        sh <span class="str">'trivy image --exit-code 1 --severity HIGH,CRITICAL registry/service:${BUILD_NUMBER}'</span>
+      }
+    }
+
+    <span class="cm">/* ── STAGE 7: INTEGRATION TESTS ── */</span>
+    <span class="kw">stage</span>(<span class="str">'Integration Test'</span>) {
+      steps { sh <span class="str">'mvn verify -P integration-tests'</span> }
+    }
+
+    <span class="cm">/* ── STAGE 8: PUBLISH IMAGE ── */</span>
+    <span class="kw">stage</span>(<span class="str">'Publish'</span>) {
+      steps { sh <span class="str">'docker push registry/service:${BUILD_NUMBER}'</span> }
+    }
+
+    <span class="cm">/* ── STAGE 9: DEPLOY TO DEV ── */</span>
+    <span class="kw">stage</span>(<span class="str">'Deploy Dev'</span>) { <span class="cm">/* Helm upgrade / kubectl apply */</span> }
+
+    <span class="cm">/* ── STAGE 10: SMOKE TESTS ── */</span>
+    <span class="kw">stage</span>(<span class="str">'Smoke Test'</span>) { <span class="cm">/* REST-Assured smoke suite */</span> }
+
+    <span class="cm">/* ── STAGE 11: PROMOTE TO UAT (manual gate) ── */</span>
+    <span class="kw">stage</span>(<span class="str">'UAT Approval'</span>) {
+      steps { <span class="fn">input</span>(<span class="str">'Promote to UAT?'</span>) }
+    }
+  }
+}</pre>
+      </div>
+
+      <div class="section-title">Harness Pipeline Equivalent</div>
+      <div class="card-grid cols2">
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#6ee7b7"></div>Harness Stages</div>
+          <ul>
+            <li>Build stage: Maven compile & test</li>
+            <li>Security stage: SonarQube, Trivy, OWASP</li>
+            <li>Artifact stage: Docker build & ECR push</li>
+            <li>Deploy stage: Harness K8s Rolling / Canary</li>
+            <li>Verify stage: CV (Prometheus/Datadog metrics)</li>
+            <li>Approval stage: Jira ticket-linked approval</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#10b981"></div>Quality Gates Summary</div>
+          <ul>
+            <li>SonarQube: Quality Gate = "Passed"</li>
+            <li>Unit coverage ≥ 85%</li>
+            <li>0 HIGH/CRITICAL CVEs (Trivy)</li>
+            <li>0 OWASP dependency failures</li>
+            <li>Smoke tests: 100% pass</li>
+            <li>Manual approval: UAT → PROD</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="callout warn">
+        <div class="callout-icon">🔒</div>
+        <div><strong>Secret Management:</strong> All credentials injected via HashiCorp Vault or AWS Secrets Manager at runtime. No secrets in pipeline config files. Gitleaks pre-commit hook and pipeline scan enforce this.</div>
+      </div>
+    </section>
+
+    <!-- ══ PHASE 7 ══ -->
+    <section class="phase" id="p7">
+      <div class="phase-header">
+        <div class="phase-icon bg-orange" style="font-size:22px;">🚀</div>
+        <div class="phase-title-block">
+          <h2>Phase 07 — Deployment (EKS / OCP)</h2>
+          <p>Production-grade Kubernetes deployment on Amazon EKS or on-premises OpenShift Container Platform, using progressive delivery strategies, automated observability, and rollback-capable release management.</p>
+        </div>
+      </div>
+
+      <div class="section-title">Deployment Strategies</div>
+      <div class="card-grid cols2">
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#fdba74"></div>Canary Deployment</div>
+          <ul>
+            <li>Route 5% → 25% → 50% → 100% traffic progressively</li>
+            <li>Prometheus metrics monitored between each step</li>
+            <li>Error rate or latency breach triggers auto-rollback</li>
+            <li>Implemented via Argo Rollouts (EKS) or OpenShift Routes</li>
+            <li>Suitable for high-risk, high-traffic services</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#f97316"></div>Blue/Green Deployment</div>
+          <ul>
+            <li>Two identical environments: Blue (live) and Green (new)</li>
+            <li>Green deployed and smoke-tested in isolation</li>
+            <li>Traffic switched at load balancer / service level</li>
+            <li>Blue retained for instant rollback (15 min window)</li>
+            <li>Suitable for batch jobs or breaking changes</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section-title">EKS Deployment Spec</div>
+      <div class="code-block">
+        <div class="code-header">
+          <div class="code-lang">Helm Values — Amazon EKS</div>
+          <div class="code-dots"><span style="background:#f85149"></span><span style="background:#f59e0b"></span><span style="background:#3fb950"></span></div>
+        </div>
+        <pre><span class="prop">replicaCount</span>: <span class="num">3</span>
+
+<span class="prop">image</span>:
+  repository: <span class="str">123456789.dkr.ecr.eu-west-1.amazonaws.com/payment-service</span>
+  tag: <span class="str">"${BUILD_NUMBER}"</span>
+  pullPolicy: <span class="str">Always</span>
+
+<span class="prop">resources</span>:
+  requests: { cpu: <span class="str">"250m"</span>, memory: <span class="str">"512Mi"</span> }
+  limits:   { cpu: <span class="str">"1000m"</span>, memory: <span class="str">"1Gi"</span> }
+
+<span class="prop">autoscaling</span>:
+  enabled: <span class="kw">true</span>
+  minReplicas: <span class="num">3</span>
+  maxReplicas: <span class="num">10</span>
+  targetCPUUtilizationPercentage: <span class="num">70</span>
+
+<span class="prop">livenessProbe</span>:
+  httpGet: { path: <span class="str">/actuator/health/liveness</span>, port: <span class="num">8080</span> }
+  initialDelaySeconds: <span class="num">30</span>
+
+<span class="prop">readinessProbe</span>:
+  httpGet: { path: <span class="str">/actuator/health/readiness</span>, port: <span class="num">8080</span> }
+
+<span class="prop">podDisruptionBudget</span>:
+  minAvailable: <span class="num">2</span>
+
+<span class="prop">serviceAccount</span>:
+  annotations:
+    eks.amazonaws.com/role-arn: <span class="str">arn:aws:iam::123456789:role/payment-service-role</span>
+
+<span class="prop">networkPolicy</span>:
+  enabled: <span class="kw">true</span>   <span class="cm"># Restrict ingress/egress by label selector</span>
+
+<span class="prop">podAnnotations</span>:
+  prometheus.io/scrape: <span class="str">"true"</span>
+  prometheus.io/port:   <span class="str">"8080"</span></pre>
+      </div>
+
+      <div class="section-title">OCP (On-Prem OpenShift) Specifics</div>
+      <div class="card-grid cols2">
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#fdba74"></div>OCP-Specific Config</div>
+          <ul>
+            <li>DeploymentConfig or Deployment (OCP 4.x)</li>
+            <li>OpenShift Routes for ingress (TLS termination)</li>
+            <li>ImageStreams for internal registry</li>
+            <li>SCC (Security Context Constraints) — non-root</li>
+            <li>OpenShift Pipelines (Tekton) as CI alternative</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#f97316"></div>Observability Stack</div>
+          <ul>
+            <li>Prometheus: metrics scraping via annotations</li>
+            <li>Grafana: service dashboards auto-provisioned</li>
+            <li>Loki or ELK: centralised log aggregation</li>
+            <li>Jaeger / Tempo: distributed tracing</li>
+            <li>PagerDuty / OpsGenie: alert routing</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section-title">Environment Promotion Ladder</div>
+      <table class="data-table">
+        <thead><tr><th>Environment</th><th>Trigger</th><th>Gate</th><th>Audience</th></tr></thead>
+        <tbody>
+          <tr><td>DEV</td><td>Every merge to main</td><td>Unit + Integration tests pass</td><td>Developers</td></tr>
+          <tr><td>SIT</td><td>Auto-promote from DEV</td><td>Smoke tests + contract tests</td><td>QA team</td></tr>
+          <tr><td>UAT</td><td>Manual trigger</td><td>Manual PO approval in Jira</td><td>Business stakeholders</td></tr>
+          <tr><td>PERF</td><td>Release branch only</td><td>Performance SLAs met</td><td>Architects / SRE</td></tr>
+          <tr><td>PROD</td><td>Manual trigger (CAB)</td><td>Change record approved</td><td>All users</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ══ PHASE 8 ══ -->
+    <section class="phase" id="p8">
+      <div class="phase-header">
+        <div class="phase-icon bg-sky" style="font-size:22px;">🛡️</div>
+        <div class="phase-title-block">
+          <h2>Phase 08 — Governance & Guardrails</h2>
+          <p>Structured controls ensuring AI outputs are auditable, compliant, and subject to appropriate human oversight at every critical decision point in the delivery lifecycle.</p>
+        </div>
+      </div>
+
+      <div class="section-title">Human Approval Gates Summary</div>
+      <table class="data-table">
+        <thead><tr><th>Gate</th><th>Phase</th><th>Approver</th><th>What's Reviewed</th></tr></thead>
+        <tbody>
+          <tr><td>LRS Sign-off</td><td>Phase 01</td><td>Architect + PO</td><td>Completeness, accuracy of extracted requirements</td></tr>
+          <tr><td>HLD Approval</td><td>Phase 02</td><td>Principal Architect</td><td>Architecture decisions, technology choices</td></tr>
+          <tr><td>LLD Approval</td><td>Phase 02</td><td>Senior Engineer + Architect</td><td>API contracts, DB schema, security design</td></tr>
+          <tr><td>Backlog Approval</td><td>Phase 03</td><td>Product Owner</td><td>Story quality, ACs, sprint readiness</td></tr>
+          <tr><td>PR Review</td><td>Phase 04</td><td>Senior Engineer (≥1)</td><td>Code quality, security, test coverage</td></tr>
+          <tr><td>UAT Sign-off</td><td>Phase 07</td><td>Business Stakeholder</td><td>Functional acceptance in UAT environment</td></tr>
+          <tr><td>CAB Approval</td><td>Phase 07</td><td>Change Advisory Board</td><td>Production change risk assessment</td></tr>
+        </tbody>
+      </table>
+
+      <div class="section-title">AI Guardrails & Limitations Policy</div>
+      <div class="card-grid cols2">
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#7dd3fc"></div>What AI Can Do Autonomously</div>
+          <ul>
+            <li>Generate draft documents, code scaffolds, test stubs</li>
+            <li>Create Jira stories via API (pending PO review)</li>
+            <li>Run scans, publish reports, open PRs</li>
+            <li>Deploy to DEV and SIT environments</li>
+            <li>Send alerts and status notifications</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title"><div class="dot" style="background:#0ea5e9"></div>What Requires Human Approval</div>
+          <ul>
+            <li>Locking any design or requirement document</li>
+            <li>Merging PRs to main/release branches</li>
+            <li>Promoting to UAT or PROD</li>
+            <li>Any change to infrastructure-as-code (Terraform)</li>
+            <li>Schema migrations in production databases</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section-title">Audit Trail & Compliance</div>
+      <div class="card">
+        <div class="card-title"><div class="dot" style="background:#7dd3fc"></div>Full Traceability Chain</div>
+        <ul>
+          <li>Every AI-generated artifact tagged with model version, timestamp, and prompt version</li>
+          <li>LRS requirement ID threaded through: design → story → code → test → deployment</li>
+          <li>All approval actions logged in Git commit history and Jira audit log</li>
+          <li>Pipeline run artifacts (SonarQube, Trivy, ZAP reports) retained per compliance policy</li>
+          <li>DORA metrics tracked: deployment frequency, lead time, MTTR, change failure rate</li>
+        </ul>
+      </div>
+
+      <div class="callout warn">
+        <div class="callout-icon">⚠️</div>
+        <div><strong>Data Classification:</strong> No sensitive or classified data (PII, PCI, confidential business data) is sent to external AI APIs. An on-premises or private-cloud AI instance must be used for confidential requirements. This must be enforced via policy.</div>
+      </div>
+    </section>
+
+    <!-- ══ TOOLING REFERENCE ══ -->
+    <section class="phase" id="tooling">
+      <div class="phase-header">
+        <div class="phase-icon" style="background:rgba(255,255,255,0.05); color:#e6edf3; font-size:22px;">◈</div>
+        <div class="phase-title-block">
+          <h2>Tooling Reference</h2>
+          <p>The recommended tool stack across all phases. Tool choices are adaptable based on existing enterprise tooling and licensing.</p>
+        </div>
+      </div>
+
+      <table class="data-table">
+        <thead><tr><th>Category</th><th>Tool(s)</th><th>Phase</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>AI Generation</td><td>Claude, GitHub Copilot, GPT-4</td><td>All</td><td>Docs, code, test, analysis generation</td></tr>
+          <tr><td>AI Code Review</td><td>CodeRabbit, Claude API</td><td>04</td><td>Automated PR review comments</td></tr>
+          <tr><td>Issue Tracking</td><td>Jira (REST API)</td><td>03</td><td>Epic/Story creation and sprint management</td></tr>
+          <tr><td>Documentation</td><td>Confluence, Git (Markdown)</td><td>01, 02</td><td>Requirement and design document storage</td></tr>
+          <tr><td>Source Control</td><td>GitHub, Bitbucket, GitLab</td><td>04–06</td><td>Branching, PR, code review</td></tr>
+          <tr><td>Build</td><td>Maven, Gradle</td><td>06</td><td>Java build lifecycle</td></tr>
+          <tr><td>SAST</td><td>SonarQube, SpotBugs, Checkstyle</td><td>06</td><td>Static code analysis and quality gates</td></tr>
+          <tr><td>Secret Scan</td><td>Gitleaks, truffleHog</td><td>04, 06</td><td>Prevent credential leakage</td></tr>
+          <tr><td>Dep. Scan</td><td>OWASP Dependency-Check, Snyk</td><td>06</td><td>CVE scanning of dependencies</td></tr>
+          <tr><td>Container Scan</td><td>Trivy, Anchore</td><td>06</td><td>OCI image vulnerability scanning</td></tr>
+          <tr><td>Unit Testing</td><td>JUnit 5, Mockito, JaCoCo</td><td>05</td><td>Unit tests and coverage reporting</td></tr>
+          <tr><td>Integration Test</td><td>Testcontainers, WireMock</td><td>05</td><td>Integration test with real dependencies</td></tr>
+          <tr><td>Contract Test</td><td>Pact, Pact Broker</td><td>05</td><td>Consumer-driven contract testing</td></tr>
+          <tr><td>E2E / API Test</td><td>REST-Assured, Playwright</td><td>05</td><td>End-to-end and API automation</td></tr>
+          <tr><td>Performance Test</td><td>Gatling, k6</td><td>05</td><td>Load and stress testing</td></tr>
+          <tr><td>DAST</td><td>OWASP ZAP, Nikto</td><td>05, 06</td><td>Dynamic application security testing</td></tr>
+          <tr><td>CI/CD</td><td>Jenkins, Harness, GitHub Actions</td><td>06</td><td>Pipeline orchestration</td></tr>
+          <tr><td>Secrets Mgmt</td><td>HashiCorp Vault, AWS Secrets Mgr</td><td>06, 07</td><td>Runtime secret injection</td></tr>
+          <tr><td>Container Runtime</td><td>Docker, Podman</td><td>06</td><td>Image build and local dev</td></tr>
+          <tr><td>Kubernetes (Cloud)</td><td>Amazon EKS, Helm, Argo Rollouts</td><td>07</td><td>Cloud K8s deployment and delivery</td></tr>
+          <tr><td>Kubernetes (OnPrem)</td><td>OpenShift OCP, Tekton</td><td>07</td><td>On-prem K8s deployment</td></tr>
+          <tr><td>Observability</td><td>Prometheus, Grafana, Jaeger, Loki</td><td>07</td><td>Metrics, tracing, logs</td></tr>
+          <tr><td>Alerting</td><td>PagerDuty, OpsGenie</td><td>07</td><td>Incident routing and on-call</td></tr>
+          <tr><td>Diagrams</td><td>Mermaid, PlantUML, Structurizr</td><td>02</td><td>Architecture diagram generation</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  function showPhase(id, el) {
+    // Hide all phases
+    document.querySelectorAll('.phase').forEach(p => p.classList.remove('active'));
+    // Deactivate all nav items
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    // Show target phase
+    document.getElementById(id).classList.add('active');
+    // Activate clicked nav item
+    if (el) {
+      // Find nav item with matching onclick
+      document.querySelectorAll('.nav-item').forEach(n => {
+        if (n.getAttribute('onclick') && n.getAttribute('onclick').includes(id)) {
+          n.classList.add('active');
+        }
+      });
+    }
+    // Scroll main to top
+    document.querySelector('.main').scrollTop = 0;
+    window.scrollTo(0, document.querySelector('.hero').offsetHeight);
+  }
+
+  // Make overview cards clickable to their respective phases
+  document.querySelectorAll('.ov-card').forEach(card => {
+    card.style.cursor = 'pointer';
+  });
+</script>
+</body>
+</html>

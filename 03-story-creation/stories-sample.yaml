@@ -1,0 +1,86 @@
+# stories.yaml — Sample backlog definition for Jira auto-creation
+# Run: python jira-api-script.py --file stories.yaml --dry-run
+
+epics:
+  - title: "Payment Processing — Core Implementation"
+    description: "Implement the core payment creation and retrieval API as defined in LRS-20240101-001"
+    priority: "High"
+    labels: ["LRS-20240101-001", "payment-service", "phase-1"]
+
+    stories:
+      - title: "As a client application, I want to submit a payment so that funds are transferred"
+        lrs_ref: "LRS-20240101-FR-01"
+        priority: "High"
+        story_points: 5
+        labels: ["backend", "payment-service", "LRS-20240101-FR-01"]
+        background: >
+          The payment-service must expose a POST endpoint that accepts payment details,
+          validates them, persists to PostgreSQL, and publishes an event to IBM MQ.
+          Refer to LLD section 3 (API Contracts) and section 6 (Messaging Design).
+        nfr_notes: "P95 response time < 300ms. Endpoint must be idempotent using client-supplied idempotency key."
+        acceptance_criteria:
+          - title: "Happy Path — Valid Payment Submitted"
+            gherkin: |
+              Given a valid OAuth2 bearer token with 'write' scope
+              And a valid payment request body with all mandatory fields
+              When I POST to /api/v1/payments
+              Then the response status is 201 Created
+              And the response body contains a payment ID (UUID)
+              And a ResourceCreatedEvent is published to IBM MQ topic COMPANY.PAYMENT.CREATED
+              And the payment record is persisted in the payments table
+          - title: "Validation Failure — Missing Mandatory Field"
+            gherkin: |
+              Given a valid OAuth2 bearer token
+              And a payment request body missing the 'amount' field
+              When I POST to /api/v1/payments
+              Then the response status is 400 Bad Request
+              And the response body follows RFC 7807 format
+              And no record is persisted in the database
+              And no MQ event is published
+          - title: "Duplicate Request — Idempotency Key Reused"
+            gherkin: |
+              Given a previously submitted payment with idempotency key 'key-123'
+              When I POST to /api/v1/payments with the same idempotency key
+              Then the response status is 200 OK
+              And the response body returns the original payment record
+              And no duplicate record is created
+        tasks:
+          - title: "Implement PaymentController — POST /api/v1/payments"
+            description: "Create Spring Boot REST controller with @Validated, @PostMapping, OAuth2 auth check"
+          - title: "Implement PaymentService — business logic and transaction boundary"
+            description: "Service layer with @Transactional, idempotency check, MQ event publish"
+          - title: "Implement PaymentRepository — JPA repository"
+            description: "Spring Data JPA repository with custom query for idempotency key lookup"
+          - title: "Write unit tests for PaymentService"
+            description: "JUnit 5 + Mockito. Cover: happy path, validation failure, idempotency, MQ failure"
+          - title: "Write integration tests — POST /api/v1/payments"
+            description: "Testcontainers (PostgreSQL + IBM MQ), WireMock. Cover all AC scenarios"
+          - title: "Flyway migration — V1__create_payments_table.sql"
+            description: "Create payments table with all fields, indexes, and constraints"
+
+      - title: "As a client application, I want to retrieve a payment by ID so that I can display its status"
+        lrs_ref: "LRS-20240101-FR-02"
+        priority: "High"
+        story_points: 3
+        labels: ["backend", "payment-service", "LRS-20240101-FR-02"]
+        background: "GET endpoint for payment retrieval. Refer to LLD section 3."
+        nfr_notes: "Response time P95 < 100ms. Caching acceptable for read operations (TTL 30s)."
+        acceptance_criteria:
+          - title: "Happy Path — Payment Found"
+            gherkin: |
+              Given a valid OAuth2 bearer token with 'read' scope
+              And a payment exists with ID 'abc-123'
+              When I GET /api/v1/payments/abc-123
+              Then the response status is 200 OK
+              And the response body contains the full payment details
+          - title: "Payment Not Found"
+            gherkin: |
+              Given a valid OAuth2 bearer token
+              When I GET /api/v1/payments/non-existent-id
+              Then the response status is 404 Not Found
+              And the response body follows RFC 7807 format
+        tasks:
+          - title: "Implement GET /api/v1/payments/{id} endpoint"
+            description: "Controller + Service + Repository. Throw ResourceNotFoundException if not found."
+          - title: "Write unit and integration tests for GET endpoint"
+            description: "Cover: found, not found, invalid UUID format"
