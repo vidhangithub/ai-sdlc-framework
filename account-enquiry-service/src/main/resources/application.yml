@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: account-enquiry-service
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/accountsdb}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${JWKS_URI:https://idp.company.com/.well-known/jwks.json}
+          issuer-uri: ${JWT_ISSUER_URI:https://idp.company.com}
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  mongodb:
+    collection:
+      accounts: accounts
+
+logging:
+  level:
+    com.company.accounts: INFO
